@@ -303,8 +303,8 @@ async function loadWeek(offset) {
 function renderGrid(data) {
   const grid       = document.getElementById('calGrid');
   const isRdvCount = currentTab === 'rdv_count';
-  const isGeneral  = !isRdvCount && currentView === 'general';
-  const gridData   = (isGeneral || isRdvCount) ? data.general : data.users[currentView];
+  const isGeneral  = currentView === 'general';
+  const gridData   = isGeneral ? data.general : data.users[currentView];
   const weekDays  = getWeekDayLabels(weekOffset);
   const todayIdx  = getTodayIdx(weekOffset);
 
@@ -338,18 +338,25 @@ function renderGrid(data) {
       if (!gridData) {
         cell.classList.add('slot-grey');
       } else if (isRdvCount) {
-        const slot = gridData[di][si];
-        if (slot.color === 'grey') {
-          cell.classList.add('slot-grey');
-        } else {
-          const n = slot.booked;
-          const heatClass = n === 0 ? 'slot-heat-0' : n === 1 ? 'slot-heat-1' : n === 2 ? 'slot-heat-2' : n === 3 ? 'slot-heat-3' : 'slot-heat-4';
-          cell.classList.add(heatClass);
-          cell.textContent = n > 0 ? n : '';
-          if (n > 0) {
-            const names = data.user_order.filter(nm => data.users[nm]?.[di]?.[si] === 'red');
-            if (names.length) cell.dataset.tip = '🔴 RDV:\n' + names.join('\n');
+        if (isGeneral) {
+          const slot = gridData[di][si];
+          if (slot.color === 'grey') {
+            cell.classList.add('slot-grey');
+          } else {
+            const n = slot.booked;
+            const heatClass = n === 0 ? 'slot-heat-0' : n === 1 ? 'slot-heat-1' : n === 2 ? 'slot-heat-2' : n === 3 ? 'slot-heat-3' : 'slot-heat-4';
+            cell.classList.add(heatClass);
+            cell.textContent = n > 0 ? n : '';
+            if (n > 0) {
+              const names = data.user_order.filter(nm => data.users[nm]?.[di]?.[si] === 'red');
+              if (names.length) cell.dataset.tip = '🔴 RDV:\n' + names.join('\n');
+            }
           }
+        } else {
+          const status = gridData[di][si];
+          if (status === 'grey')       { cell.classList.add('slot-grey'); }
+          else if (status === 'red')   { cell.classList.add('slot-heat-2'); cell.textContent = '1'; }
+          else                         { cell.classList.add('slot-heat-0'); }
         }
       } else if (isGeneral) {
         const slot = gridData[di][si];
@@ -385,16 +392,22 @@ function updateStats(isGeneral, isRdvCount, gridData, data) {
   const statsRow = document.getElementById('statsRow');
 
   if (isRdvCount && gridData) {
-    let totalRdv = 0, maxSlot = 0;
-    gridData.forEach(day => day.forEach(slot => {
-      if (slot.color !== 'grey') { totalRdv += slot.booked; if (slot.booked > maxSlot) maxSlot = slot.booked; }
-    }));
-    const activeClosers = data.user_order.length;
-    statsRow.style.display = 'flex';
-    statsRow.innerHTML = `
-      <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${activeClosers}</div></div>
-      <div class="stat-card"><div class="stat-label">Total RDV semaine</div><div class="stat-value red">${totalRdv}</div></div>
-      <div class="stat-card"><div class="stat-label">Max RDV / créneau</div><div class="stat-value ${maxSlot >= 3 ? 'red' : maxSlot >= 2 ? 'orange' : 'green'}">${maxSlot}</div></div>`;
+    if (isGeneral) {
+      let totalRdv = 0, maxSlot = 0;
+      gridData.forEach(day => day.forEach(slot => {
+        if (slot.color !== 'grey') { totalRdv += slot.booked; if (slot.booked > maxSlot) maxSlot = slot.booked; }
+      }));
+      statsRow.style.display = 'flex';
+      statsRow.innerHTML = `
+        <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${data.user_order.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Total RDV semaine</div><div class="stat-value red">${totalRdv}</div></div>
+        <div class="stat-card"><div class="stat-label">Max RDV / créneau</div><div class="stat-value ${maxSlot >= 3 ? 'red' : maxSlot >= 2 ? 'orange' : 'green'}">${maxSlot}</div></div>`;
+    } else {
+      let rdv = 0;
+      gridData.forEach(day => day.forEach(s => { if (s === 'red') rdv++; }));
+      statsRow.style.display = 'none';
+      document.getElementById('closerStats').textContent = `${rdv} RDV posés cette semaine`;
+    }
     return;
   }
 
@@ -425,32 +438,33 @@ function updateStats(isGeneral, isRdvCount, gridData, data) {
 }
 
 // ── Controls ───────────────────────────────────────────────────────────────
+function updateLegendAndTitle() {
+  const isRdv     = currentTab === 'rdv_count';
+  const isGeneral = currentView === 'general';
+  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = (!isRdv && isGeneral)  ? 'flex' : 'none');
+  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = (!isRdv && !isGeneral) ? 'flex' : 'none');
+  document.querySelectorAll('.legend-rdv').forEach(el => el.style.display = isRdv                  ? 'flex' : 'none');
+  const titleSuffix = isGeneral ? 'Tous les closers' : currentView;
+  const tabLabel    = isRdv ? 'Compteur RDV' : (isGeneral ? 'Vue Générale' : 'Vue Individuelle');
+  document.getElementById('legendTitle').textContent = tabLabel;
+  document.getElementById('viewTitle').textContent   = isRdv ? `Compteur RDV — ${titleSuffix}` : (isGeneral ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${currentView}`);
+  document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : 'Closer';
+  document.getElementById('viewBadge').className     = 'view-badge ' + (isGeneral ? 'badge-global' : 'badge-closer');
+}
+
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
-  const isRdv = tab === 'rdv_count';
-  document.getElementById('viewSelect').style.display = isRdv ? 'none' : '';
-  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = (!isRdv && currentView === 'general') ? 'flex' : 'none');
-  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = (!isRdv && currentView !== 'general') ? 'flex' : 'none');
-  document.querySelectorAll('.legend-rdv').forEach(el => el.style.display = isRdv ? 'flex' : 'none');
-  document.getElementById('legendTitle').textContent = isRdv ? 'Compteur RDV' : (currentView === 'general' ? 'Vue Générale' : 'Vue Individuelle');
-  document.getElementById('viewTitle').textContent   = isRdv ? 'Compteur RDV — RDV posés par créneau' : (currentView === 'general' ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${currentView}`);
-  document.getElementById('viewBadge').textContent   = isRdv ? 'RDV' : (currentView === 'general' ? 'Global' : 'Closer');
-  document.getElementById('viewBadge').className     = 'view-badge ' + (currentView !== 'general' && !isRdv ? 'badge-closer' : 'badge-global');
+  document.getElementById('closerStats').textContent = '';
+  updateLegendAndTitle();
   if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
 }
 
 function switchView(val) {
   currentView = val;
-  const isGeneral = val === 'general';
-  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = isGeneral ? 'flex' : 'none');
-  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = isGeneral ? 'none' : 'flex');
-  document.getElementById('legendTitle').textContent = isGeneral ? 'Vue Générale' : 'Vue Individuelle';
-  document.getElementById('viewTitle').textContent   = isGeneral ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${val}`;
-  document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : 'Closer';
-  document.getElementById('viewBadge').className     = 'view-badge ' + (isGeneral ? 'badge-global' : 'badge-closer');
   document.getElementById('closerStats').textContent = '';
+  updateLegendAndTitle();
   if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
 }
 
