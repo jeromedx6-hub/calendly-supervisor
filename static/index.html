@@ -43,6 +43,19 @@
   .sync-dot.loading { background: #f59e0b; animation: pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
+  .tab-bar {
+    background: #0f172a; border-bottom: 1px solid #1e293b;
+    padding: 0 20px; display: flex; align-items: flex-end; gap: 2px;
+  }
+  .tab-btn {
+    padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+    border: none; background: transparent; color: #64748b;
+    border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: #cbd5e1; }
+  .tab-btn.active { color: #fff; border-bottom-color: #60a5fa; }
+
   .legend-bar {
     background: #fff; border-bottom: 1px solid #e2e8f0;
     padding: 7px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
@@ -140,7 +153,6 @@
 
   <select id="viewSelect" onchange="switchView(this.value)">
     <option value="general">📊 Vue Générale</option>
-    <option value="rdv_count">📈 Compteur RDV</option>
   </select>
 
   <div class="week-nav">
@@ -162,6 +174,11 @@
     <div class="sync-dot" id="syncDot"></div>
     <span id="syncTime">Chargement…</span>
   </div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-calendar" onclick="switchTab('calendar')">📊 Calendrier</button>
+  <button class="tab-btn" id="tab-rdv_count" onclick="switchTab('rdv_count')">📈 Compteur RDV</button>
 </div>
 
 <div class="legend-bar">
@@ -196,6 +213,7 @@ const FR_DAYS   = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const FR_MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 
 let currentView  = 'general';
+let currentTab   = 'calendar';
 let weekOffset   = 0;
 let weekCache    = {};
 let membersCache = null;
@@ -284,8 +302,8 @@ async function loadWeek(offset) {
 // ── Render ─────────────────────────────────────────────────────────────────
 function renderGrid(data) {
   const grid       = document.getElementById('calGrid');
-  const isGeneral  = currentView === 'general';
-  const isRdvCount = currentView === 'rdv_count';
+  const isRdvCount = currentTab === 'rdv_count';
+  const isGeneral  = !isRdvCount && currentView === 'general';
   const gridData   = (isGeneral || isRdvCount) ? data.general : data.users[currentView];
   const weekDays  = getWeekDayLabels(weekOffset);
   const todayIdx  = getTodayIdx(weekOffset);
@@ -407,18 +425,31 @@ function updateStats(isGeneral, isRdvCount, gridData, data) {
 }
 
 // ── Controls ───────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  const isRdv = tab === 'rdv_count';
+  document.getElementById('viewSelect').style.display = isRdv ? 'none' : '';
+  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = (!isRdv && currentView === 'general') ? 'flex' : 'none');
+  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = (!isRdv && currentView !== 'general') ? 'flex' : 'none');
+  document.querySelectorAll('.legend-rdv').forEach(el => el.style.display = isRdv ? 'flex' : 'none');
+  document.getElementById('legendTitle').textContent = isRdv ? 'Compteur RDV' : (currentView === 'general' ? 'Vue Générale' : 'Vue Individuelle');
+  document.getElementById('viewTitle').textContent   = isRdv ? 'Compteur RDV — RDV posés par créneau' : (currentView === 'general' ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${currentView}`);
+  document.getElementById('viewBadge').textContent   = isRdv ? 'RDV' : (currentView === 'general' ? 'Global' : 'Closer');
+  document.getElementById('viewBadge').className     = 'view-badge ' + (currentView !== 'general' && !isRdv ? 'badge-closer' : 'badge-global');
+  if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
+}
+
 function switchView(val) {
   currentView = val;
-  const isGeneral  = val === 'general';
-  const isRdvCount = val === 'rdv_count';
-  const isIndiv    = !isGeneral && !isRdvCount;
-  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = isGeneral  ? 'flex' : 'none');
-  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = isIndiv    ? 'flex' : 'none');
-  document.querySelectorAll('.legend-rdv').forEach(el => el.style.display = isRdvCount ? 'flex' : 'none');
-  document.getElementById('legendTitle').textContent = isGeneral ? 'Vue Générale' : isRdvCount ? 'Compteur RDV' : 'Vue Individuelle';
-  document.getElementById('viewTitle').textContent   = isGeneral ? 'Vue Générale — Tous les closers' : isRdvCount ? 'Compteur RDV — RDV posés par créneau' : `Vue individuelle — ${val}`;
-  document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : isRdvCount ? 'RDV' : 'Closer';
-  document.getElementById('viewBadge').className     = 'view-badge ' + (isIndiv ? 'badge-closer' : 'badge-global');
+  const isGeneral = val === 'general';
+  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = isGeneral ? 'flex' : 'none');
+  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = isGeneral ? 'none' : 'flex');
+  document.getElementById('legendTitle').textContent = isGeneral ? 'Vue Générale' : 'Vue Individuelle';
+  document.getElementById('viewTitle').textContent   = isGeneral ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${val}`;
+  document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : 'Closer';
+  document.getElementById('viewBadge').className     = 'view-badge ' + (isGeneral ? 'badge-global' : 'badge-closer');
   document.getElementById('closerStats').textContent = '';
   if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
 }
