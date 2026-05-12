@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendly Supervisor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; background: #f1f5f9; color: #1e293b; font-size: 13px; }
+
+  .topbar {
+    background: #0f172a; padding: 10px 20px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .logo { font-weight: 700; font-size: 15px; color: #fff; margin-right: 6px; }
+  .logo span { color: #60a5fa; }
+  .topbar select, .topbar button {
+    height: 32px; border-radius: 6px; border: 1px solid #334155;
+    background: #1e293b; color: #e2e8f0; padding: 0 10px;
+    font-size: 12px; cursor: pointer; outline: none; transition: border-color 0.2s;
+  }
+  .topbar select:hover { border-color: #60a5fa; }
+  .week-nav {
+    display: flex; align-items: center; gap: 4px;
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 6px; padding: 0 4px; height: 32px;
+  }
+  .week-nav button {
+    background: transparent; border: none; color: #94a3b8;
+    font-size: 15px; width: 26px; height: 26px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px; cursor: pointer;
+  }
+  .week-nav button:hover { background: #334155; color: #fff; }
+  .week-label { color: #e2e8f0; font-size: 12px; font-weight: 500; padding: 0 6px; white-space: nowrap; }
+  .btn-refresh { background: #1e40af !important; border-color: #1e40af !important; color: #fff !important; font-weight: 500; }
+  .btn-refresh:disabled { opacity: 0.6; cursor: not-allowed !important; }
+  .btn-pdf { background: #065f46 !important; border-color: #065f46 !important; color: #fff !important; font-weight: 500; }
+  .sync-info { color: #64748b; font-size: 11px; margin-left: auto; display: flex; align-items: center; gap: 5px; }
+  .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+  .sync-dot.loading { background: #f59e0b; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .legend-bar {
+    background: #fff; border-bottom: 1px solid #e2e8f0;
+    padding: 7px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .legend-title { font-weight: 600; font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #64748b; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .legend-sep { width: 1px; height: 14px; background: #e2e8f0; }
+  .closer-stats { margin-left: auto; font-size: 11px; color: #94a3b8; }
+
+  .grid-container { padding: 14px 20px; overflow-x: auto; }
+  .view-title { font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .view-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .badge-global { background: #e0e7ff; color: #4338ca; }
+  .badge-closer { background: #dcfce7; color: #166534; }
+
+  .stats-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .stat-card { background: #fff; border-radius: 8px; padding: 10px 14px; border: 1px solid #e2e8f0; min-width: 130px; }
+  .stat-label { font-size: 10px; color: #94a3b8; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-value { font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 2px; }
+  .stat-value.green { color: #16a34a; }
+  .stat-value.orange { color: #ea580c; }
+  .stat-value.red { color: #dc2626; }
+
+  .cal-grid {
+    display: grid;
+    grid-template-columns: 56px repeat(7, 1fr);
+    gap: 1px; background: #e2e8f0;
+    border-radius: 10px; overflow: hidden;
+    min-width: 760px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .cal-header {
+    background: #0f172a; color: #94a3b8;
+    text-align: center; padding: 8px 4px;
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .cal-header.today { color: #60a5fa; }
+  .cal-header .day-num { font-size: 17px; font-weight: 700; color: #fff; margin-top: 1px; }
+  .cal-header.today .day-num { color: #60a5fa; }
+  .time-label {
+    background: #fff; color: #94a3b8; text-align: right;
+    padding: 0 6px; font-size: 10px; font-weight: 500;
+    display: flex; align-items: center; justify-content: flex-end;
+    border-right: 2px solid #e2e8f0;
+  }
+  .slot {
+    background: #fff; min-height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600;
+    transition: filter 0.1s; position: relative;
+  }
+  .slot:hover { filter: brightness(0.9); }
+  .slot-grey   { background: #f1f5f9; color: #cbd5e1; }
+  .slot-green  { background: #dcfce7; color: #15803d; }
+  .slot-orange { background: #ffedd5; color: #c2410c; }
+  .slot-red    { background: #fee2e2; color: #b91c1c; }
+  .slot-loading { background: #f8fafc; }
+
+  .slot[data-tip] { cursor: pointer; }
+  .slot[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; bottom: calc(100% + 5px); left: 50%;
+    transform: translateX(-50%);
+    background: #0f172a; color: #fff;
+    font-size: 11px; font-weight: 400; padding: 7px 12px;
+    border-radius: 6px; white-space: pre; z-index: 999;
+    pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    line-height: 1.6;
+  }
+
+  /* Loading skeleton */
+  .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  /* Print */
+  @media print {
+    .topbar, .legend-bar { display: none !important; }
+    body { background: white; }
+    .grid-container { padding: 0; }
+    .cal-grid { box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">📅 <span>Calendly</span> Supervisor</div>
+
+  <select id="viewSelect" onchange="switchView(this.value)">
+    <option value="general">📊 Vue Générale</option>
+  </select>
+
+  <div class="week-nav">
+    <button onclick="prevWeek()" id="btnPrev">←</button>
+    <span class="week-label" id="weekLabel">Chargement…</span>
+    <button onclick="nextWeek()" id="btnNext">→</button>
+  </div>
+
+  <select id="tzSelect">
+    <option value="2">🌍 Europe/Paris (UTC+2)</option>
+    <option value="1">🌍 Europe/London (UTC+1)</option>
+    <option value="-4">🌍 America/New_York (UTC-4)</option>
+  </select>
+
+  <button class="btn-refresh" id="btnRefresh" onclick="hardRefresh()">↻ Actualiser</button>
+  <button class="btn-pdf" onclick="window.print()">⬇ Export PDF</button>
+
+  <div class="sync-info">
+    <div class="sync-dot" id="syncDot"></div>
+    <span id="syncTime">Chargement…</span>
+  </div>
+</div>
+
+<div class="legend-bar">
+  <span class="legend-title" id="legendTitle">Vue Générale</span>
+  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#dcfce7;border:1.5px solid #86efac"></div>&gt;50% dispo</div>
+  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#ffedd5;border:1.5px solid #fdba74"></div>≤50% dispo</div>
+  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>0 dispo</div>
+  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Hors horaires</div>
+  <div class="legend-sep"></div>
+  <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#dcfce7;border:1.5px solid #86efac"></div>Disponible</div>
+  <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>RDV posé</div>
+  <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Indisponible</div>
+  <span class="closer-stats" id="closerStats"></span>
+</div>
+
+<div class="grid-container" id="printArea">
+  <div class="stats-row" id="statsRow"></div>
+  <div class="view-title">
+    <span id="viewTitle">Vue Générale — Tous les closers</span>
+    <span class="view-badge badge-global" id="viewBadge">Global</span>
+  </div>
+  <div class="cal-grid" id="calGrid"></div>
+</div>
+
+<script>
+const FR_DAYS   = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+const FR_MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+
+let currentView  = 'general';
+let weekOffset   = 0;
+let weekCache    = {};
+let membersCache = null;
+let loading      = false;
+
+// ── Today detection ────────────────────────────────────────────────────────
+const TODAY = new Date();
+
+function getTodayIdx(offset) {
+  const BASE = new Date(2026, 4, 11); // Mon May 11 2026
+  const mon  = new Date(BASE);
+  mon.setDate(mon.getDate() + offset * 7);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mon);
+    d.setDate(mon.getDate() + i);
+    if (d.toDateString() === TODAY.toDateString()) return i;
+  }
+  return -1;
+}
+
+function getWeekDayLabels(offset) {
+  const BASE = new Date(2026, 4, 11);
+  const result = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(BASE);
+    d.setDate(d.getDate() + offset * 7 + i);
+    result.push({ day: FR_DAYS[i], date: d.getDate() });
+  }
+  return result;
+}
+
+// ── API calls ──────────────────────────────────────────────────────────────
+async function fetchWeek(offset) {
+  if (weekCache[offset]) return weekCache[offset];
+  const r = await fetch(`/api/week?offset=${offset}`);
+  if (!r.ok) throw new Error(`API error ${r.status}`);
+  const data = await r.json();
+  weekCache[offset] = data;
+  return data;
+}
+
+async function fetchMembers() {
+  if (membersCache) return membersCache;
+  const r = await fetch('/api/members');
+  const data = await r.json();
+  membersCache = data;
+  return data;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function init() {
+  setLoading(true);
+  try {
+    const members = await fetchMembers();
+    const sel = document.getElementById('viewSelect');
+    sel.innerHTML = '<option value="general">📊 Vue Générale</option>';
+    members.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.name;
+      opt.textContent = '👤 ' + m.name;
+      sel.appendChild(opt);
+    });
+    await loadWeek(weekOffset);
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function loadWeek(offset) {
+  setLoading(true);
+  document.getElementById('weekLabel').textContent = 'Chargement…';
+  try {
+    const data = await fetchWeek(offset);
+    renderGrid(data);
+    setSyncTime();
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderGrid(data) {
+  const grid      = document.getElementById('calGrid');
+  const isGeneral = currentView === 'general';
+  const gridData  = isGeneral ? data.general : data.users[currentView];
+  const weekDays  = getWeekDayLabels(weekOffset);
+  const todayIdx  = getTodayIdx(weekOffset);
+
+  document.getElementById('weekLabel').textContent = data.week_label;
+  grid.innerHTML = '';
+
+  // Corner
+  const corner = document.createElement('div');
+  corner.className = 'cal-header';
+  grid.appendChild(corner);
+
+  // Day headers
+  weekDays.forEach((d, i) => {
+    const h = document.createElement('div');
+    h.className = 'cal-header' + (i === todayIdx ? ' today' : '');
+    h.innerHTML = `${d.day}<div class="day-num">${d.date}</div>`;
+    grid.appendChild(h);
+  });
+
+  // Slots
+  data.slot_labels.forEach((label, si) => {
+    const tl = document.createElement('div');
+    tl.className = 'time-label';
+    tl.textContent = label;
+    grid.appendChild(tl);
+
+    for (let di = 0; di < 7; di++) {
+      const cell = document.createElement('div');
+      cell.className = 'slot';
+
+      if (!gridData) {
+        cell.classList.add('slot-grey');
+      } else if (isGeneral) {
+        const slot = gridData[di][si];
+        if      (slot.color === 'green')  { cell.classList.add('slot-green');  cell.textContent = slot.label; }
+        else if (slot.color === 'orange') { cell.classList.add('slot-orange'); cell.textContent = slot.label; }
+        else if (slot.color === 'red')    { cell.classList.add('slot-red');    cell.textContent = slot.label; }
+        else                              { cell.classList.add('slot-grey'); }
+
+        if (slot.color !== 'grey') {
+          const booked = data.user_order.filter(n => data.users[n]?.[di]?.[si] === 'red');
+          const free   = data.user_order.filter(n => data.users[n]?.[di]?.[si] === 'green');
+          let tip = '';
+          if (booked.length) tip += '🔴 RDV: ' + booked.join(', ');
+          if (booked.length && free.length) tip += '\n';
+          if (free.length)   tip += '🟢 Dispo: ' + free.join(', ');
+          if (tip) cell.dataset.tip = tip;
+        }
+      } else {
+        const status = gridData[di][si];
+        if      (status === 'green') { cell.classList.add('slot-green'); cell.textContent = '✓'; }
+        else if (status === 'red')   { cell.classList.add('slot-red');   cell.textContent = 'RDV'; }
+        else                         { cell.classList.add('slot-grey'); }
+      }
+
+      grid.appendChild(cell);
+    }
+  });
+
+  updateStats(isGeneral, gridData, data);
+}
+
+function updateStats(isGeneral, gridData, data) {
+  const statsRow = document.getElementById('statsRow');
+
+  if (isGeneral && gridData) {
+    let totalGreen = 0, totalRed = 0, totalSlots = 0;
+    gridData.forEach(day => day.forEach(slot => {
+      if (slot.color !== 'grey') {
+        totalSlots++;
+        if (slot.color === 'red') totalRed++; else totalGreen++;
+      }
+    }));
+    const rate = totalSlots > 0 ? Math.round(totalRed / totalSlots * 100) : 0;
+    statsRow.style.display = 'flex';
+    statsRow.innerHTML = `
+      <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${data.user_order.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Slots libres</div><div class="stat-value green">${totalGreen}</div></div>
+      <div class="stat-card"><div class="stat-label">RDV posés</div><div class="stat-value red">${totalRed}</div></div>
+      <div class="stat-card"><div class="stat-label">Taux remplissage</div><div class="stat-value ${rate > 70 ? 'red' : rate > 40 ? 'orange' : 'green'}">${rate}%</div></div>`;
+  } else if (!isGeneral && gridData) {
+    let green = 0, red = 0;
+    gridData.forEach(day => day.forEach(s => { if (s === 'green') green++; if (s === 'red') red++; }));
+    statsRow.style.display = 'none';
+    document.getElementById('closerStats').textContent = `${red} RDV posés · ${green} slots libres cette semaine`;
+  } else {
+    statsRow.style.display = 'none';
+    document.getElementById('closerStats').textContent = '';
+  }
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────
+function switchView(val) {
+  currentView = val;
+  const isGeneral = val === 'general';
+  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = isGeneral ? 'flex' : 'none');
+  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = isGeneral ? 'none' : 'flex');
+  document.getElementById('legendTitle').textContent = isGeneral ? 'Vue Générale' : 'Vue Individuelle';
+  document.getElementById('viewTitle').textContent   = isGeneral ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${val}`;
+  document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : 'Closer';
+  document.getElementById('viewBadge').className     = 'view-badge ' + (isGeneral ? 'badge-global' : 'badge-closer');
+  document.getElementById('closerStats').textContent = '';
+  if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
+}
+
+function prevWeek() { if (!loading) { weekOffset--; loadWeek(weekOffset); } }
+function nextWeek() { if (!loading) { weekOffset++; loadWeek(weekOffset); } }
+
+async function hardRefresh() {
+  weekCache = {};
+  membersCache = null;
+  await fetch('/api/refresh', { method: 'POST' });
+  await init();
+}
+
+// ── UI helpers ─────────────────────────────────────────────────────────────
+function setLoading(on) {
+  loading = on;
+  const dot = document.getElementById('syncDot');
+  dot.className = 'sync-dot' + (on ? ' loading' : '');
+  document.getElementById('btnRefresh').disabled = on;
+}
+
+function setSyncTime() {
+  document.getElementById('syncTime').textContent =
+    'Sync ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function showError(msg) {
+  document.getElementById('weekLabel').textContent = '⚠ Erreur';
+  document.getElementById('syncTime').textContent = msg;
+}
+
+// Auto-refresh every 60 min
+setInterval(hardRefresh, 60 * 60 * 1000);
+
+init();
+</script>
+</body>
+</html>
