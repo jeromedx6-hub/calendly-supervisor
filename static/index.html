@@ -102,6 +102,11 @@
   .slot-orange { background: #ffedd5; color: #c2410c; }
   .slot-red    { background: #fee2e2; color: #b91c1c; }
   .slot-loading { background: #f8fafc; }
+  .slot-heat-0 { background: #f0fdf4; color: #166534; }
+  .slot-heat-1 { background: #fff7ed; color: #9a3412; }
+  .slot-heat-2 { background: #fee2e2; color: #b91c1c; }
+  .slot-heat-3 { background: #fca5a5; color: #7f1d1d; font-size: 12px; }
+  .slot-heat-4 { background: #ef4444; color: #fff;    font-size: 12px; }
 
   .slot[data-tip] { cursor: pointer; }
   .slot[data-tip]:hover::after {
@@ -135,6 +140,7 @@
 
   <select id="viewSelect" onchange="switchView(this.value)">
     <option value="general">📊 Vue Générale</option>
+    <option value="rdv_count">📈 Compteur RDV</option>
   </select>
 
   <div class="week-nav">
@@ -160,14 +166,19 @@
 
 <div class="legend-bar">
   <span class="legend-title" id="legendTitle">Vue Générale</span>
-  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#dcfce7;border:1.5px solid #86efac"></div>&gt;50% dispo</div>
-  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#ffedd5;border:1.5px solid #fdba74"></div>≤50% dispo</div>
+  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#dcfce7;border:1.5px solid #86efac"></div>&gt;1 closer dispo</div>
+  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#ffedd5;border:1.5px solid #fdba74"></div>1 closer dispo</div>
   <div class="legend-item legend-gen"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>0 dispo</div>
   <div class="legend-item legend-gen"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Hors horaires</div>
   <div class="legend-sep"></div>
   <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#dcfce7;border:1.5px solid #86efac"></div>Disponible</div>
   <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>RDV posé</div>
   <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Indisponible</div>
+  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#f0fdf4;border:1.5px solid #86efac"></div>0 RDV</div>
+  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#fff7ed;border:1.5px solid #fdba74"></div>1 RDV</div>
+  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>2 RDV</div>
+  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#ef4444;border:1.5px solid #dc2626"></div>4+ RDV</div>
+  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Hors horaires</div>
   <span class="closer-stats" id="closerStats"></span>
 </div>
 
@@ -272,9 +283,10 @@ async function loadWeek(offset) {
 
 // ── Render ─────────────────────────────────────────────────────────────────
 function renderGrid(data) {
-  const grid      = document.getElementById('calGrid');
-  const isGeneral = currentView === 'general';
-  const gridData  = isGeneral ? data.general : data.users[currentView];
+  const grid       = document.getElementById('calGrid');
+  const isGeneral  = currentView === 'general';
+  const isRdvCount = currentView === 'rdv_count';
+  const gridData   = (isGeneral || isRdvCount) ? data.general : data.users[currentView];
   const weekDays  = getWeekDayLabels(weekOffset);
   const todayIdx  = getTodayIdx(weekOffset);
 
@@ -307,6 +319,20 @@ function renderGrid(data) {
 
       if (!gridData) {
         cell.classList.add('slot-grey');
+      } else if (isRdvCount) {
+        const slot = gridData[di][si];
+        if (slot.color === 'grey') {
+          cell.classList.add('slot-grey');
+        } else {
+          const n = slot.booked;
+          const heatClass = n === 0 ? 'slot-heat-0' : n === 1 ? 'slot-heat-1' : n === 2 ? 'slot-heat-2' : n === 3 ? 'slot-heat-3' : 'slot-heat-4';
+          cell.classList.add(heatClass);
+          cell.textContent = n > 0 ? n : '';
+          if (n > 0) {
+            const names = data.user_order.filter(nm => data.users[nm]?.[di]?.[si] === 'red');
+            if (names.length) cell.dataset.tip = '🔴 RDV:\n' + names.join('\n');
+          }
+        }
       } else if (isGeneral) {
         const slot = gridData[di][si];
         if      (slot.color === 'green')  { cell.classList.add('slot-green');  cell.textContent = slot.label; }
@@ -334,11 +360,25 @@ function renderGrid(data) {
     }
   });
 
-  updateStats(isGeneral, gridData, data);
+  updateStats(isGeneral, isRdvCount, gridData, data);
 }
 
-function updateStats(isGeneral, gridData, data) {
+function updateStats(isGeneral, isRdvCount, gridData, data) {
   const statsRow = document.getElementById('statsRow');
+
+  if (isRdvCount && gridData) {
+    let totalRdv = 0, maxSlot = 0;
+    gridData.forEach(day => day.forEach(slot => {
+      if (slot.color !== 'grey') { totalRdv += slot.booked; if (slot.booked > maxSlot) maxSlot = slot.booked; }
+    }));
+    const activeClosers = data.user_order.length;
+    statsRow.style.display = 'flex';
+    statsRow.innerHTML = `
+      <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${activeClosers}</div></div>
+      <div class="stat-card"><div class="stat-label">Total RDV semaine</div><div class="stat-value red">${totalRdv}</div></div>
+      <div class="stat-card"><div class="stat-label">Max RDV / créneau</div><div class="stat-value ${maxSlot >= 3 ? 'red' : maxSlot >= 2 ? 'orange' : 'green'}">${maxSlot}</div></div>`;
+    return;
+  }
 
   if (isGeneral && gridData) {
     let totalGreen = 0, totalRed = 0, totalSlots = 0;
@@ -369,13 +409,16 @@ function updateStats(isGeneral, gridData, data) {
 // ── Controls ───────────────────────────────────────────────────────────────
 function switchView(val) {
   currentView = val;
-  const isGeneral = val === 'general';
-  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = isGeneral ? 'flex' : 'none');
-  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = isGeneral ? 'none' : 'flex');
-  document.getElementById('legendTitle').textContent = isGeneral ? 'Vue Générale' : 'Vue Individuelle';
-  document.getElementById('viewTitle').textContent   = isGeneral ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${val}`;
-  document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : 'Closer';
-  document.getElementById('viewBadge').className     = 'view-badge ' + (isGeneral ? 'badge-global' : 'badge-closer');
+  const isGeneral  = val === 'general';
+  const isRdvCount = val === 'rdv_count';
+  const isIndiv    = !isGeneral && !isRdvCount;
+  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = isGeneral  ? 'flex' : 'none');
+  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = isIndiv    ? 'flex' : 'none');
+  document.querySelectorAll('.legend-rdv').forEach(el => el.style.display = isRdvCount ? 'flex' : 'none');
+  document.getElementById('legendTitle').textContent = isGeneral ? 'Vue Générale' : isRdvCount ? 'Compteur RDV' : 'Vue Individuelle';
+  document.getElementById('viewTitle').textContent   = isGeneral ? 'Vue Générale — Tous les closers' : isRdvCount ? 'Compteur RDV — RDV posés par créneau' : `Vue individuelle — ${val}`;
+  document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : isRdvCount ? 'RDV' : 'Closer';
+  document.getElementById('viewBadge').className     = 'view-badge ' + (isIndiv ? 'badge-closer' : 'badge-global');
   document.getElementById('closerStats').textContent = '';
   if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
 }

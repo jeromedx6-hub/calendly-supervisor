@@ -193,13 +193,13 @@ def get_week_data(week_offset: int) -> dict:
             free   = sum(1 for s in statuses if s == "green")
             total  = booked + free
             if total == 0:
-                day_gen.append({"color": "grey", "label": ""})
+                day_gen.append({"color": "grey",   "label": "",              "booked": 0, "free": 0})
             elif free == 0:
-                day_gen.append({"color": "red",    "label": f"{booked}/{total}"})
-            elif free / total <= 0.5:
-                day_gen.append({"color": "orange", "label": f"{booked}/{total}"})
+                day_gen.append({"color": "red",    "label": f"{booked}/{total}", "booked": booked, "free": 0})
+            elif free == 1:
+                day_gen.append({"color": "orange", "label": f"{booked}/{total}", "booked": booked, "free": 1})
             else:
-                day_gen.append({"color": "green",  "label": f"{booked}/{total}"})
+                day_gen.append({"color": "green",  "label": f"{booked}/{total}", "booked": booked, "free": free})
         general_grid.append(day_gen)
 
     result = {
