@@ -52,7 +52,21 @@ def refresh():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "ok"})
+    key = os.environ.get("CALENDLY_API_KEY", "")
+    return jsonify({"status": "ok", "key_set": bool(key), "key_len": len(key)})
+
+@app.route("/api/debug")
+def debug():
+    import requests as req
+    key = os.environ.get("CALENDLY_API_KEY", "")
+    if not key:
+        return jsonify({"error": "CALENDLY_API_KEY manquante"}), 500
+    try:
+        r = req.get("https://api.calendly.com/users/me",
+                    headers={"Authorization": f"Bearer {key}"}, timeout=10)
+        return jsonify({"status": r.status_code, "body": r.json()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))

@@ -230,6 +230,7 @@ async function fetchMembers() {
   if (membersCache) return membersCache;
   const r = await fetch('/api/members');
   const data = await r.json();
+  if (!Array.isArray(data)) throw new Error(data.error || 'Erreur API membres');
   membersCache = data;
   return data;
 }
