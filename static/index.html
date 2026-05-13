@@ -285,24 +285,24 @@ async function loadActivity() {
     const r = await fetch('/api/activity');
     if (!r.ok) return;
     const activity = await r.json();
-    if (activity.error) return;
+    if (!activity || activity.error) return;
 
-    // Met à jour les dots dans le dropdown
+    // Met à jour les options du dropdown avec les dots
     const sel = document.getElementById('viewSelect');
-    Array.from(sel.options).forEach(opt => {
-      if (opt.value === 'general') return;
-      const status = activity[opt.value];
-      if (!status) return;
-      const dot = status.active ? '🟢' : '🔴';
-      // Retire l'ancien dot si déjà là
-      opt.text = opt.text.replace(/^[🟢🔴] /, '').replace(/^👤 /, '');
-      opt.text = `${dot} ${opt.text}`;
-    });
+    if (membersCache) {
+      membersCache.forEach((m, idx) => {
+        const opt = sel.options[idx + 1]; // +1 pour "Vue Générale"
+        if (!opt) return;
+        const status = activity[m.name];
+        const dot = status ? (status.active ? '🟢' : '🔴') : '⚪';
+        opt.textContent = dot + ' ' + m.name;
+      });
+    }
 
-    // Invalide le cache semaine pour que les inactifs soient exclus du prochain chargement
+    // Invalide le cache semaine pour exclure les inactifs
     weekCache = {};
     next7Cache = null;
-    if (weekCache[weekOffset] === undefined) await loadWeek(weekOffset);
+    await loadWeek(weekOffset);
   } catch(e) { /* silencieux */ }
 }
 
