@@ -38,6 +38,13 @@ def week():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/diagnostic")
+def diagnostic():
+    try:
+        return jsonify(calendly_api.get_diagnostic())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/next7")
 def next7():
     try:

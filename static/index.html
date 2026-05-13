@@ -137,6 +137,19 @@
   .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
   @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
+  /* Diagnostic */
+  .diag-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .diag-table th { background: #0f172a; color: #94a3b8; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 14px; text-align: left; }
+  .diag-table td { padding: 10px 14px; font-size: 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+  .diag-table tr:last-child td { border-bottom: none; }
+  .diag-table tr:hover td { background: #f8fafc; }
+  .badge-active   { background: #dcfce7; color: #166534; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .badge-partial  { background: #fff7ed; color: #9a3412; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .badge-inactive { background: #fee2e2; color: #991b1b; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .diag-check { color: #16a34a; font-size: 14px; }
+  .diag-cross { color: #dc2626; font-size: 14px; }
+  .diag-loading { text-align: center; padding: 40px; color: #94a3b8; font-size: 13px; }
+
   /* Print */
   @media print {
     .topbar, .legend-bar { display: none !important; }
@@ -180,6 +193,7 @@
 <div class="tab-bar">
   <button class="tab-btn active" id="tab-calendar" onclick="switchTab('calendar')">📊 Calendrier</button>
   <button class="tab-btn" id="tab-rdv_count" onclick="switchTab('rdv_count')">📈 Compteur RDV</button>
+  <button class="tab-btn" id="tab-diagnostic" onclick="switchTab('diagnostic')">🔍 Diagnostic</button>
 </div>
 
 <div class="legend-bar">
@@ -458,6 +472,53 @@ function updateStats(isGeneral, isRdvCount, gridData, data) {
 }
 
 // ── Controls ───────────────────────────────────────────────────────────────
+async function loadDiagnostic() {
+  const area = document.getElementById('printArea');
+  area.innerHTML = '<div class="diag-loading">⏳ Analyse en cours… (10-20 secondes)</div>';
+  try {
+    const r = await fetch('/api/diagnostic');
+    if (!r.ok) throw new Error(`API error ${r.status}`);
+    const data = await r.json();
+    renderDiagnostic(data);
+  } catch(e) {
+    area.innerHTML = `<div class="diag-loading" style="color:#dc2626">⚠ Erreur : ${e.message}</div>`;
+  }
+}
+
+function renderDiagnostic(data) {
+  const area = document.getElementById('printArea');
+  const rows = data.map(m => {
+    const badge = m.score === 4 ? '<span class="badge-active">Actif</span>'
+                : m.score >= 2  ? '<span class="badge-partial">Partiel</span>'
+                :                 '<span class="badge-inactive">Inactif</span>';
+    const chk  = v => v ? '<span class="diag-check">✓</span>' : '<span class="diag-cross">✗</span>';
+    const rdvP = m.rdv_past_30  != null ? m.rdv_past_30  : '—';
+    const rdvF = m.rdv_next_30  != null ? m.rdv_next_30  : '—';
+    const et   = m.event_types && m.event_types.length ? m.event_types.join(', ') : '<span style="color:#94a3b8">Aucun</span>';
+    return `<tr>
+      <td><strong>${m.name}</strong><br><span style="color:#94a3b8;font-size:11px">${m.email}</span></td>
+      <td>${badge}</td>
+      <td>${chk(m.has_hours)} ${m.active_days}j/7</td>
+      <td>${chk(m.has_event_types)} <span style="color:#64748b;font-size:11px">${et}</span></td>
+      <td style="text-align:center">${rdvP}</td>
+      <td style="text-align:center">${rdvF}</td>
+    </tr>`;
+  }).join('');
+
+  area.innerHTML = `
+    <div class="view-title" style="margin-bottom:12px">
+      <span>Diagnostic — Activité des comptes Calendly</span>
+      <span class="view-badge badge-global">Diagnostic</span>
+    </div>
+    <table class="diag-table">
+      <thead><tr>
+        <th>Membre</th><th>Statut</th><th>Horaires</th><th>Event types actifs</th>
+        <th style="text-align:center">RDV 30j passés</th><th style="text-align:center">RDV 30j à venir</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
 function updateLegendAndTitle() {
   const isRdv     = currentTab === 'rdv_count';
   const isGeneral = currentView === 'general';
@@ -477,8 +538,24 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
   document.getElementById('closerStats').textContent = '';
+
+  const isDiag = tab === 'diagnostic';
+  document.getElementById('viewSelect').style.display = isDiag ? 'none' : '';
+  document.getElementById('btnNext7').style.display   = isDiag ? 'none' : '';
+  document.querySelector('.week-nav').style.display   = isDiag ? 'none' : '';
+  document.getElementById('legendTitle').textContent  = isDiag ? 'Diagnostic' : '';
+  document.querySelectorAll('.legend-gen,.legend-ind,.legend-rdv').forEach(el => el.style.display = 'none');
+
+  if (isDiag) {
+    loadDiagnostic();
+    return;
+  }
+
+  document.querySelector('.week-nav').style.opacity       = next7Mode ? '0.35' : '';
+  document.querySelector('.week-nav').style.pointerEvents = next7Mode ? 'none' : '';
   updateLegendAndTitle();
-  if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
+  if (next7Mode) { if (next7Cache) renderGrid(next7Cache); }
+  else if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
 }
 
 function switchView(val) {

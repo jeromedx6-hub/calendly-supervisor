@@ -211,6 +211,75 @@ def get_week_data(week_offset: int) -> dict:
     label  = f"Semaine du {monday.day} au {sunday.day} {FR_MONTHS[sunday.month - 1]} {sunday.year}"
     return _build_period_data(monday, label, f"week_{week_offset}")
 
+def get_diagnostic() -> list:
+    now      = datetime.utcnow()
+    past_30  = (now - timedelta(days=30)).strftime("%Y-%m-%dT00:00:00.000000Z")
+    future_30 = (now + timedelta(days=30)).strftime("%Y-%m-%dT23:59:59.000000Z")
+    now_str  = now.strftime("%Y-%m-%dT%H:%M:%S.000000Z")
+
+    members = get_members()
+    results = []
+
+    for m in members:
+        uri  = m["uri"]
+        name = m["name"]
+        info = {"name": name, "email": m["email"]}
+
+        # 1. Horaires configurés
+        try:
+            sched = get_schedule(uri)
+            wh = sched["working_hours"]
+            has_hours = any(len(v) > 0 for v in wh.values())
+            info["has_hours"] = has_hours
+            active_days = sum(1 for v in wh.values() if len(v) > 0)
+            info["active_days"] = active_days
+        except Exception:
+            info["has_hours"] = False
+            info["active_days"] = 0
+
+        # 2. Event types actifs
+        try:
+            et = api_get(f"{CALENDLY_BASE}/event_types", {"user": uri, "active": "true", "count": 10})
+            event_types = [e["name"] for e in et.get("collection", [])]
+            info["event_types"] = event_types
+            info["has_event_types"] = len(event_types) > 0
+        except Exception:
+            info["event_types"] = []
+            info["has_event_types"] = False
+
+        # 3. RDV posés ces 30 derniers jours
+        try:
+            past = api_get(f"{CALENDLY_BASE}/scheduled_events", {
+                "user": uri, "min_start_time": past_30, "max_start_time": now_str,
+                "status": "active", "count": 100
+            })
+            info["rdv_past_30"] = len(past.get("collection", []))
+        except Exception:
+            info["rdv_past_30"] = None
+
+        # 4. RDV à venir (30 prochains jours)
+        try:
+            fut = api_get(f"{CALENDLY_BASE}/scheduled_events", {
+                "user": uri, "min_start_time": now_str, "max_start_time": future_30,
+                "status": "active", "count": 100
+            })
+            info["rdv_next_30"] = len(fut.get("collection", []))
+        except Exception:
+            info["rdv_next_30"] = None
+
+        # Score d'activité
+        score = 0
+        if info["has_hours"]:       score += 1
+        if info["has_event_types"]: score += 1
+        if (info["rdv_past_30"] or 0) > 0:  score += 1
+        if (info["rdv_next_30"] or 0) > 0:  score += 1
+        info["score"] = score  # 0=inactif, 4=pleinement actif
+
+        results.append(info)
+
+    results.sort(key=lambda x: -x["score"])
+    return results
+
 def get_next7_data() -> dict:
     today = (datetime.utcnow() + timedelta(hours=PARIS_OFFSET)).replace(hour=0, minute=0, second=0, microsecond=0)
     end   = today + timedelta(days=6)
