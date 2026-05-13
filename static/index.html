@@ -287,22 +287,20 @@ async function loadActivity() {
     const activity = await r.json();
     if (!activity || activity.error) return;
 
-    // Met à jour les options du dropdown avec les dots
+    // Met à jour les dots directement via opt.value (= nom du membre)
     const sel = document.getElementById('viewSelect');
-    if (membersCache) {
-      membersCache.forEach((m, idx) => {
-        const opt = sel.options[idx + 1]; // +1 pour "Vue Générale"
-        if (!opt) return;
-        const status = activity[m.name];
-        const dot = status ? (status.active ? '🟢' : '🔴') : '⚪';
-        opt.textContent = dot + ' ' + m.name;
-      });
+    for (let i = 1; i < sel.options.length; i++) {
+      const opt = sel.options[i];
+      const status = activity[opt.value];
+      if (!status) continue;
+      opt.textContent = (status.active ? '🟢' : '🔴') + ' ' + opt.value;
     }
 
-    // Invalide le cache semaine pour exclure les inactifs
+    // Recharge silencieusement pour exclure les inactifs
     weekCache = {};
     next7Cache = null;
-    await loadWeek(weekOffset);
+    const data = await fetchWeek(weekOffset);
+    renderGrid(data);
   } catch(e) { /* silencieux */ }
 }
 
