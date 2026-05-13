@@ -280,6 +280,32 @@ async function fetchNext7() {
   return next7Cache;
 }
 
+async function loadActivity() {
+  try {
+    const r = await fetch('/api/activity');
+    if (!r.ok) return;
+    const activity = await r.json();
+    if (activity.error) return;
+
+    // Met à jour les dots dans le dropdown
+    const sel = document.getElementById('viewSelect');
+    Array.from(sel.options).forEach(opt => {
+      if (opt.value === 'general') return;
+      const status = activity[opt.value];
+      if (!status) return;
+      const dot = status.active ? '🟢' : '🔴';
+      // Retire l'ancien dot si déjà là
+      opt.text = opt.text.replace(/^[🟢🔴] /, '').replace(/^👤 /, '');
+      opt.text = `${dot} ${opt.text}`;
+    });
+
+    // Invalide le cache semaine pour que les inactifs soient exclus du prochain chargement
+    weekCache = {};
+    next7Cache = null;
+    if (weekCache[weekOffset] === undefined) await loadWeek(weekOffset);
+  } catch(e) { /* silencieux */ }
+}
+
 async function fetchMembers() {
   if (membersCache) return membersCache;
   const r = await fetch('/api/members');
@@ -303,6 +329,7 @@ async function init() {
       sel.appendChild(opt);
     });
     await loadWeek(weekOffset);
+    loadActivity(); // asynchrone, met à jour les dots sans bloquer
   } catch (e) {
     showError(e.message);
   } finally {

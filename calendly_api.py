@@ -26,12 +26,12 @@ _cache = {}
 
 def cache_get(key):
     entry = _cache.get(key)
-    if entry and time.time() - entry["ts"] < 1800:
+    if entry and time.time() - entry["ts"] < entry.get("ttl", 1800):
         return entry["data"]
     return None
 
-def cache_set(key, data):
-    _cache[key] = {"data": data, "ts": time.time()}
+def cache_set(key, data, ttl=1800):
+    _cache[key] = {"data": data, "ts": time.time(), "ttl": ttl}
 
 def cache_clear():
     _cache.clear()
@@ -118,6 +118,35 @@ def get_busy(user_uri, start_utc, end_utc):
             pass
     return result
 
+# ── Statut d'activité (cache 24h) ─────────────────────────────────────────────
+def get_activity_status() -> dict:
+    today_key = datetime.utcnow().strftime("%Y-%m-%d")
+    ckey = f"activity_{today_key}"
+    cached = cache_get(ckey)
+    if cached:
+        return cached
+
+    members = get_members()
+    status = {}
+    for m in members:
+        uri = m["uri"]
+        try:
+            sched = get_schedule(uri)
+            has_hours = any(len(v) > 0 for v in sched["working_hours"].values())
+        except Exception:
+            has_hours = False
+        try:
+            et = api_get(f"{CALENDLY_BASE}/event_types", {"user": uri, "active": "true", "count": 1})
+            has_et = len(et.get("collection", [])) > 0
+        except Exception:
+            has_et = False
+
+        active = has_hours and has_et
+        status[m["name"]] = {"active": active, "has_hours": has_hours, "has_event_types": has_et}
+
+    cache_set(ckey, status, ttl=86400)
+    return status
+
 # ── Calcul d'une période quelconque ───────────────────────────────────────────
 def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
     cached = cache_get(cache_key)
@@ -132,7 +161,11 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
     slot_labels = [f"{h:02d}:{m:02d}" for h, m in SLOT_TIMES]
     day_labels  = [d.strftime("%a %d %b") for d in week_days]
 
-    members = get_members()
+    all_members = get_members()
+    activity    = cache_get(f"activity_{datetime.utcnow().strftime('%Y-%m-%d')}") or {}
+    members     = [m for m in all_members if activity.get(m["name"], {}).get("active", True)]
+    if not members:
+        members = all_members  # fallback si activité pas encore calculée
     user_grids = {}
 
     for member in members:
