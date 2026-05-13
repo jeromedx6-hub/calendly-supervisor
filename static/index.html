@@ -167,6 +167,7 @@
     <option value="-4">🌍 America/New_York (UTC-4)</option>
   </select>
 
+  <button id="btnNext7" onclick="toggleNext7()" style="background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important;font-weight:500;height:32px;border-radius:6px;border:1px solid;padding:0 10px;font-size:12px;cursor:pointer;">🗓 7 prochains jours</button>
   <button class="btn-refresh" id="btnRefresh" onclick="hardRefresh()">↻ Actualiser</button>
   <button class="btn-pdf" onclick="window.print()">⬇ Export PDF</button>
 
@@ -215,6 +216,8 @@ const FR_MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct'
 let currentView  = 'general';
 let currentTab   = 'calendar';
 let weekOffset   = 0;
+let next7Mode    = false;
+let next7Cache   = null;
 let weekCache    = {};
 let membersCache = null;
 let loading      = false;
@@ -253,6 +256,14 @@ async function fetchWeek(offset) {
   const data = await r.json();
   weekCache[offset] = data;
   return data;
+}
+
+async function fetchNext7() {
+  if (next7Cache) return next7Cache;
+  const r = await fetch('/api/next7');
+  if (!r.ok) throw new Error(`API error ${r.status}`);
+  next7Cache = await r.json();
+  return next7Cache;
 }
 
 async function fetchMembers() {
@@ -300,13 +311,22 @@ async function loadWeek(offset) {
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
+function getNext7DayLabels() {
+  const today = new Date();
+  return Array.from({length: 7}, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    return { day: FR_DAYS[d.getDay() === 0 ? 6 : d.getDay() - 1], date: d.getDate() };
+  });
+}
+
 function renderGrid(data) {
   const grid       = document.getElementById('calGrid');
   const isRdvCount = currentTab === 'rdv_count';
   const isGeneral  = currentView === 'general';
   const gridData   = isGeneral ? data.general : data.users[currentView];
-  const weekDays  = getWeekDayLabels(weekOffset);
-  const todayIdx  = getTodayIdx(weekOffset);
+  const weekDays  = next7Mode ? getNext7DayLabels() : getWeekDayLabels(weekOffset);
+  const todayIdx  = next7Mode ? 0 : getTodayIdx(weekOffset);
 
   document.getElementById('weekLabel').textContent = data.week_label;
   grid.innerHTML = '';
@@ -468,11 +488,40 @@ function switchView(val) {
   if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
 }
 
-function prevWeek() { if (!loading) { weekOffset--; loadWeek(weekOffset); } }
-function nextWeek() { if (!loading) { weekOffset++; loadWeek(weekOffset); } }
+function prevWeek() { if (!loading && !next7Mode) { weekOffset--; loadWeek(weekOffset); } }
+function nextWeek() { if (!loading && !next7Mode) { weekOffset++; loadWeek(weekOffset); } }
+
+async function toggleNext7() {
+  next7Mode = !next7Mode;
+  const btn = document.getElementById('btnNext7');
+  const nav = document.querySelector('.week-nav');
+  if (next7Mode) {
+    btn.style.background = '#7c3aed';
+    btn.style.borderColor = '#7c3aed';
+    btn.textContent = '✕ Semaine calendaire';
+    nav.style.opacity = '0.35';
+    nav.style.pointerEvents = 'none';
+    setLoading(true);
+    try {
+      const data = await fetchNext7();
+      renderGrid(data);
+      setSyncTime();
+    } catch(e) { showError(e.message); }
+    finally { setLoading(false); }
+  } else {
+    btn.style.background = '#4f46e5';
+    btn.style.borderColor = '#4f46e5';
+    btn.textContent = '🗓 7 prochains jours';
+    nav.style.opacity = '';
+    nav.style.pointerEvents = '';
+    if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
+    else loadWeek(weekOffset);
+  }
+}
 
 async function hardRefresh() {
   weekCache = {};
+  next7Cache = null;
   membersCache = null;
   await fetch('/api/refresh', { method: 'POST' });
   await init();

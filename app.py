@@ -38,6 +38,14 @@ def week():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/next7")
+def next7():
+    try:
+        data = calendly_api.get_next7_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/members")
 def members():
     try:

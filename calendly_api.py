@@ -118,24 +118,19 @@ def get_busy(user_uri, start_utc, end_utc):
             pass
     return result
 
-# ── Calcul d'une semaine ──────────────────────────────────────────────────────
-BASE_MONDAY = datetime(2026, 5, 11)
-
-def get_week_data(week_offset: int) -> dict:
-    ckey = f"week_{week_offset}"
-    cached = cache_get(ckey)
+# ── Calcul d'une période quelconque ───────────────────────────────────────────
+def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
+    cached = cache_get(cache_key)
     if cached:
         return cached
 
-    monday = BASE_MONDAY + timedelta(weeks=week_offset)
-    sunday = monday + timedelta(days=6)
-    start_utc = monday.strftime("%Y-%m-%dT00:00:00.000000Z")
-    end_utc   = sunday.strftime("%Y-%m-%dT23:59:59.000000Z")
+    end_day   = start_day + timedelta(days=6)
+    start_utc = (start_day - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT00:00:00.000000Z")
+    end_utc   = (end_day   - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT23:59:59.000000Z")
 
-    week_days = [monday + timedelta(days=i) for i in range(7)]
+    week_days   = [start_day + timedelta(days=i) for i in range(7)]
     slot_labels = [f"{h:02d}:{m:02d}" for h, m in SLOT_TIMES]
-    day_labels  = [(monday + timedelta(days=i)).strftime("%a %d %b") for i in range(7)]
-    week_label  = f"Semaine du {monday.day} au {sunday.day} {FR_MONTHS[sunday.month - 1]} {sunday.year}"
+    day_labels  = [d.strftime("%a %d %b") for d in week_days]
 
     members = get_members()
     user_grids = {}
@@ -148,18 +143,16 @@ def get_week_data(week_offset: int) -> dict:
         do       = sched["date_overrides"]
 
         user_grid = []
-        for di, day_paris in enumerate(week_days):
+        for day_paris in week_days:
             day_str  = day_paris.strftime("%Y-%m-%d")
             wday_idx = day_paris.weekday()
             intervals = do.get(day_str, wh.get(wday_idx, []))
             day_slots = []
-
             for (sh, sm) in SLOT_TIMES:
                 eh = sh + (sm + 30) // 60
                 em = (sm + 30) % 60
                 slot_s = time_to_min(sh, sm)
                 slot_e = time_to_min(eh, em)
-
                 in_working = any(
                     slot_s >= time_to_min(fh, fm) and slot_e <= time_to_min(th, tm)
                     for fh, fm, th, tm in intervals
@@ -167,23 +160,19 @@ def get_week_data(week_offset: int) -> dict:
                 if not in_working:
                     day_slots.append("grey")
                     continue
-
                 sdt = day_paris.replace(hour=sh, minute=sm)
                 edt = day_paris.replace(hour=eh, minute=em)
-                is_booked  = any(bt == "calendly"  and overlaps(sdt, edt, bs, be) for bs, be, bt in busy)
-                is_blocked = any(bt == "external"  and overlaps(sdt, edt, bs, be) for bs, be, bt in busy)
-
+                is_booked  = any(bt == "calendly" and overlaps(sdt, edt, bs, be) for bs, be, bt in busy)
+                is_blocked = any(bt == "external" and overlaps(sdt, edt, bs, be) for bs, be, bt in busy)
                 if is_booked:    day_slots.append("red")
                 elif is_blocked: day_slots.append("grey")
                 else:            day_slots.append("green")
-
             user_grid.append(day_slots)
 
         user_grids[member["name"]] = user_grid
 
     user_order = [m["name"] for m in members]
 
-    # Vue générale
     general_grid = []
     for di in range(7):
         day_gen = []
@@ -193,7 +182,7 @@ def get_week_data(week_offset: int) -> dict:
             free   = sum(1 for s in statuses if s == "green")
             total  = booked + free
             if total == 0:
-                day_gen.append({"color": "grey",   "label": "",              "booked": 0, "free": 0})
+                day_gen.append({"color": "grey",   "label": "",                 "booked": 0,      "free": 0})
             elif free == 0:
                 day_gen.append({"color": "red",    "label": f"{booked}/{total}", "booked": booked, "free": 0})
             elif free == 1:
@@ -203,12 +192,27 @@ def get_week_data(week_offset: int) -> dict:
         general_grid.append(day_gen)
 
     result = {
-        "week_label":  week_label,
+        "week_label":  label,
         "day_labels":  day_labels,
         "slot_labels": slot_labels,
         "user_order":  user_order,
         "users":       user_grids,
         "general":     general_grid,
     }
-    cache_set(ckey, result)
+    cache_set(cache_key, result)
     return result
+
+# ── Calcul d'une semaine calendaire ───────────────────────────────────────────
+BASE_MONDAY = datetime(2026, 5, 11)
+
+def get_week_data(week_offset: int) -> dict:
+    monday = BASE_MONDAY + timedelta(weeks=week_offset)
+    sunday = monday + timedelta(days=6)
+    label  = f"Semaine du {monday.day} au {sunday.day} {FR_MONTHS[sunday.month - 1]} {sunday.year}"
+    return _build_period_data(monday, label, f"week_{week_offset}")
+
+def get_next7_data() -> dict:
+    today = (datetime.utcnow() + timedelta(hours=PARIS_OFFSET)).replace(hour=0, minute=0, second=0, microsecond=0)
+    end   = today + timedelta(days=6)
+    label = f"7 prochains jours — {today.day} {FR_MONTHS[today.month-1]} au {end.day} {FR_MONTHS[end.month-1]}"
+    return _build_period_data(today, label, f"next7_{today.strftime('%Y-%m-%d')}")
