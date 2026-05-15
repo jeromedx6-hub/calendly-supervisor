@@ -60,6 +60,25 @@ def next7():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/events")
+def events():
+    try:
+        offset = int(request.args.get("offset", 0))
+        if offset < -10 or offset > 20:
+            return jsonify({"error": "Offset hors limites"}), 400
+        data = calendly_api.get_events_week_data(offset)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/events/next7")
+def events_next7():
+    try:
+        data = calendly_api.get_events_next7_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/members")
 def members():
     try:

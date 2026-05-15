@@ -181,6 +181,39 @@
   .toggle-btn.excluded { background:#fee2e2;border-color:#fca5a5;color:#991b1b; }
   .toggle-btn.excluded:hover { background:#dcfce7;border-color:#86efac;color:#166534; }
 
+  /* Events view */
+  .events-container { padding: 14px 20px; display: none; }
+  .events-container.active { display: block; }
+  .ev-day-section { margin-bottom: 20px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .ev-day-header {
+    background: #0f172a; padding: 10px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .ev-day-title { color: #fff; font-size: 13px; font-weight: 700; }
+  .ev-day-stats { display: flex; gap: 12px; font-size: 11px; }
+  .ev-stat { display: flex; align-items: center; gap: 4px; }
+  .ev-stat-rdv   { color: #fca5a5; }
+  .ev-stat-dispo { color: #86efac; }
+  .ev-stat-off   { color: #64748b; }
+  .ev-body { padding: 0; }
+  .ev-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 12px;
+  }
+  .ev-item:last-child { border-bottom: none; }
+  .ev-item:hover { background: #f8fafc; }
+  .ev-time { color: #334155; font-weight: 700; font-size: 12px; min-width: 110px; white-space: nowrap; }
+  .ev-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ev-dot-rdv    { background: #ef4444; }
+  .ev-dot-dispo  { background: #22c55e; }
+  .ev-dot-off    { background: #cbd5e1; }
+  .ev-closer { color: #6366f1; font-weight: 600; min-width: 140px; }
+  .ev-name { color: #1e293b; flex: 1; }
+  .ev-duration { background: #f1f5f9; color: #64748b; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+  .ev-empty { padding: 14px 16px; color: #94a3b8; font-size: 12px; font-style: italic; }
+  .ev-today .ev-day-header { background: #1e3a5f; }
+  .ev-today .ev-day-title { color: #93c5fd; }
+
   /* Print */
   @media print {
     .topbar, .legend-bar { display: none !important; }
@@ -225,6 +258,7 @@
 <div class="tab-bar">
   <button class="tab-btn active" id="tab-calendar" onclick="switchTab('calendar')">📊 Calendrier</button>
   <button class="tab-btn" id="tab-rdv_count" onclick="switchTab('rdv_count')">📈 Compteur RDV</button>
+  <button class="tab-btn" id="tab-events" onclick="switchTab('events')">📋 Événements</button>
   <button class="tab-btn" id="tab-diagnostic" onclick="switchTab('diagnostic')">🔍 Diagnostic</button>
 </div>
 
@@ -255,6 +289,8 @@
   <div class="cal-grid" id="calGrid"></div>
 </div>
 
+<div class="events-container" id="eventsContainer"></div>
+
 <!-- Settings drawer -->
 <div class="settings-overlay" id="settingsOverlay" onclick="closeSettings()"></div>
 <div class="settings-drawer" id="settingsDrawer">
@@ -279,6 +315,7 @@ let weekOffset     = 0;
 let next7Mode      = false;
 let next7Cache     = null;
 let weekCache      = {};
+let eventsCache    = null;
 let membersCache   = null;
 let loading        = false;
 let activityStatus = {};
@@ -404,6 +441,124 @@ async function fetchNext7() {
   if (!r.ok) throw new Error(`API error ${r.status}`);
   next7Cache = await r.json();
   return next7Cache;
+}
+
+async function fetchEvents() {
+  if (eventsCache) return eventsCache;
+  const url = next7Mode ? '/api/events/next7' : `/api/events?offset=${weekOffset}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`API error ${r.status}`);
+  eventsCache = await r.json();
+  return eventsCache;
+}
+
+function renderEvents(evData, weekData) {
+  const container = document.getElementById('eventsContainer');
+  const isGeneral = currentView === 'general';
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Compute slot stats from week data if available
+  const slotStats = {}; // date → {rdv, dispo, off}
+  if (weekData) {
+    evData.week_days.forEach((date, di) => {
+      if (isGeneral) {
+        const members = evData.member_names.filter(n => !excludedMembers.has(n));
+        let rdv = 0, dispo = 0, off = 0;
+        evData.member_names.filter(n => !excludedMembers.has(n)).forEach(n => {
+          const userSlots = weekData.users[n]?.[di] || [];
+          rdv   += userSlots.filter(s => s === 'red').length;
+          dispo += userSlots.filter(s => s === 'green').length;
+          off   += userSlots.filter(s => s === 'grey').length;
+        });
+        slotStats[date] = {rdv, dispo, off};
+      } else {
+        const userSlots = weekData.users[currentView]?.[di] || [];
+        slotStats[date] = {
+          rdv:   userSlots.filter(s => s === 'red').length,
+          dispo: userSlots.filter(s => s === 'green').length,
+          off:   userSlots.filter(s => s === 'grey').length,
+        };
+      }
+    });
+  }
+
+  let totalRdv = 0, todayRdv = 0, totalDispo = 0, totalOff = 0;
+  Object.values(slotStats).forEach(s => { totalRdv += s.rdv; totalDispo += s.dispo; totalOff += s.off; });
+  if (slotStats[today]) todayRdv = slotStats[today].rdv;
+
+  // Stats cards
+  const statsHtml = `
+    <div class="stats-row" style="margin-bottom:16px">
+      <div class="stat-card"><div class="stat-label">RDV cette semaine</div><div class="stat-value red">${totalRdv}</div></div>
+      <div class="stat-card"><div class="stat-label">RDV aujourd'hui</div><div class="stat-value ${todayRdv > 0 ? 'red' : 'green'}">${todayRdv}</div></div>
+      <div class="stat-card"><div class="stat-label">Slots disponibles</div><div class="stat-value green">${totalDispo}</div></div>
+      <div class="stat-card"><div class="stat-label">Hors plage</div><div class="stat-value">${totalOff}</div></div>
+    </div>`;
+
+  // Day sections
+  const daysHtml = evData.week_days.map((date, di) => {
+    const isToday = date === today;
+    const label = evData.day_labels[di];
+    const stats = slotStats[date] || {rdv:0, dispo:0, off:0};
+
+    // Filter events
+    let events = [];
+    if (isGeneral) {
+      evData.member_names.filter(n => !excludedMembers.has(n)).forEach(n => {
+        (evData.events_by_member[n] || [])
+          .filter(e => e.date === date)
+          .forEach(e => events.push({...e, closer: n}));
+      });
+      events.sort((a,b) => a.start.localeCompare(b.start));
+    } else {
+      events = (evData.events_by_member[currentView] || [])
+        .filter(e => e.date === date)
+        .map(e => ({...e, closer: currentView}));
+    }
+
+    const evItems = events.length > 0
+      ? events.map(e => `
+        <div class="ev-item">
+          <span class="ev-time">${e.start} → ${e.end}</span>
+          <span class="ev-dot ev-dot-rdv"></span>
+          ${isGeneral ? `<span class="ev-closer">${e.closer}</span>` : ''}
+          <span class="ev-name">${e.name}</span>
+          <span class="ev-duration">${e.duration} min</span>
+        </div>`).join('')
+      : `<div class="ev-empty">Aucun rendez-vous</div>`;
+
+    return `
+      <div class="ev-day-section${isToday ? ' ev-today' : ''}">
+        <div class="ev-day-header">
+          <span class="ev-day-title">${label}</span>
+          <div class="ev-day-stats">
+            <span class="ev-stat ev-stat-rdv">🔴 ${stats.rdv} RDV</span>
+            <span class="ev-stat ev-stat-dispo">🟢 ${stats.dispo} dispo</span>
+            <span class="ev-stat ev-stat-off">⬜ ${stats.off} hors plage</span>
+          </div>
+        </div>
+        <div class="ev-body">${evItems}</div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = statsHtml + daysHtml;
+}
+
+async function loadEventsTab() {
+  const container = document.getElementById('eventsContainer');
+  container.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8">Chargement des événements…</div>';
+  setLoading(true);
+  try {
+    eventsCache = null; // force refresh
+    const evData   = await fetchEvents();
+    const weekData = next7Mode ? next7Cache : weekCache[weekOffset];
+    renderEvents(evData, weekData);
+    setSyncTime();
+  } catch(e) {
+    container.innerHTML = `<div style="padding:40px;text-align:center;color:#ef4444">Erreur : ${e.message}</div>`;
+  } finally {
+    setLoading(false);
+  }
 }
 
 async function loadActivity() {
@@ -691,6 +846,22 @@ function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
+
+  const isEvents = tab === 'events';
+  document.getElementById('printArea').style.display      = isEvents ? 'none' : '';
+  document.getElementById('eventsContainer').classList.toggle('active', isEvents);
+
+  if (isEvents) {
+    document.getElementById('legendTitle').textContent = 'Événements';
+    document.querySelectorAll('.legend-gen,.legend-ind,.legend-rdv').forEach(el => el.style.display = 'none');
+    document.getElementById('closerStats').textContent = '';
+    document.getElementById('viewBadge').textContent = currentView === 'general' ? 'Global' : 'Closer';
+    document.getElementById('viewBadge').className = 'view-badge ' + (currentView === 'general' ? 'badge-global' : 'badge-closer');
+    document.getElementById('viewTitle').textContent = currentView === 'general' ? 'Événements — Tous les closers' : `Événements — ${currentView}`;
+    loadEventsTab();
+    return;
+  }
+
   document.getElementById('closerStats').textContent = '';
 
   const isDiag = tab === 'diagnostic';
@@ -713,6 +884,14 @@ function switchTab(tab) {
 }
 
 function switchView(val) {
+  if (currentTab === 'events') {
+    document.getElementById('viewTitle').textContent = val === 'general' ? 'Événements — Tous les closers' : `Événements — ${val}`;
+    document.getElementById('viewBadge').textContent = val === 'general' ? 'Global' : 'Closer';
+    document.getElementById('viewBadge').className   = 'view-badge ' + (val === 'general' ? 'badge-global' : 'badge-closer');
+    currentView = val;
+    if (eventsCache) renderEvents(eventsCache, next7Mode ? next7Cache : weekCache[weekOffset]);
+    return;
+  }
   currentView = val;
   document.getElementById('closerStats').textContent = '';
   updateLegendAndTitle();
@@ -724,6 +903,7 @@ function nextWeek() { if (!loading && !next7Mode) { weekOffset++; loadWeek(weekO
 
 async function toggleNext7() {
   next7Mode = !next7Mode;
+  eventsCache = null;
   const btn = document.getElementById('btnNext7');
   const nav = document.querySelector('.week-nav');
   if (next7Mode) {
@@ -740,6 +920,7 @@ async function toggleNext7() {
     } catch(e) { showError(e.message); }
     finally { setLoading(false); }
   } else {
+    eventsCache = null;
     btn.style.background = '#4f46e5';
     btn.style.borderColor = '#4f46e5';
     btn.textContent = '🗓 7 prochains jours';
@@ -751,8 +932,9 @@ async function toggleNext7() {
 }
 
 async function hardRefresh() {
-  weekCache = {};
-  next7Cache = null;
+  weekCache    = {};
+  next7Cache   = null;
+  eventsCache  = null;
   membersCache = null;
   await fetch('/api/refresh', { method: 'POST' });
   await init();

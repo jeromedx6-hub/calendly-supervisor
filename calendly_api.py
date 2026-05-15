@@ -318,3 +318,108 @@ def get_next7_data() -> dict:
     end   = today + timedelta(days=6)
     label = f"7 prochains jours — {today.day} {FR_MONTHS[today.month-1]} au {end.day} {FR_MONTHS[end.month-1]}"
     return _build_period_data(today, label, f"next7_{today.strftime('%Y-%m-%d')}")
+
+
+# ── Événements planifiés ──────────────────────────────────────────────────────
+def get_scheduled_events(user_uri, start_utc, end_utc):
+    data = api_get(f"{CALENDLY_BASE}/scheduled_events", {
+        "user": user_uri,
+        "min_start_time": start_utc,
+        "max_start_time": end_utc,
+        "status": "active",
+        "count": 100,
+    })
+    events = []
+    for e in data.get("collection", []):
+        try:
+            s = parse_dt_paris(e["start_time"])
+            f = parse_dt_paris(e["end_time"])
+            events.append({
+                "name":     e.get("name", "RDV"),
+                "start":    s.strftime("%H:%M"),
+                "end":      f.strftime("%H:%M"),
+                "date":     s.strftime("%Y-%m-%d"),
+                "duration": int((f - s).total_seconds() / 60),
+            })
+        except Exception:
+            pass
+    return sorted(events, key=lambda x: x["start"])
+
+
+def get_events_week_data(week_offset: int) -> dict:
+    ckey = f"events_{week_offset}"
+    cached = cache_get(ckey)
+    if cached:
+        return cached
+
+    monday = BASE_MONDAY + timedelta(weeks=week_offset)
+    sunday = monday + timedelta(days=6)
+    start_utc = monday.strftime("%Y-%m-%dT00:00:00.000000Z")
+    end_utc   = sunday.strftime("%Y-%m-%dT23:59:59.000000Z")
+
+    all_members  = get_members()
+    activity     = cache_get(f"activity_{datetime.utcnow().strftime('%Y-%m-%d')}") or {}
+    members      = [m for m in all_members if activity.get(m["name"], {}).get("active", True)]
+    if not members:
+        members = all_members
+
+    events_by_member = {}
+    for m in members:
+        events_by_member[m["name"]] = get_scheduled_events(m["uri"], start_utc, end_utc)
+
+    week_days = [(monday + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+    day_labels = []
+    FR_DAYS_LONG = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"]
+    for i in range(7):
+        d = monday + timedelta(days=i)
+        day_labels.append(f"{FR_DAYS_LONG[i]} {d.day} {FR_MONTHS[d.month-1]}")
+
+    result = {
+        "week_label":       f"Semaine du {monday.day} au {sunday.day} {FR_MONTHS[sunday.month-1]} {sunday.year}",
+        "week_days":        week_days,
+        "day_labels":       day_labels,
+        "events_by_member": events_by_member,
+        "member_names":     [m["name"] for m in members],
+    }
+    cache_set(ckey, result, ttl=1800)
+    return result
+
+
+def get_events_next7_data() -> dict:
+    today  = (datetime.utcnow() + timedelta(hours=PARIS_OFFSET)).replace(hour=0, minute=0, second=0, microsecond=0)
+    end    = today + timedelta(days=6)
+    ckey   = f"events_next7_{today.strftime('%Y-%m-%d')}"
+    cached = cache_get(ckey)
+    if cached:
+        return cached
+
+    start_utc = today.strftime("%Y-%m-%dT00:00:00.000000Z")
+    end_utc   = end.strftime("%Y-%m-%dT23:59:59.000000Z")
+
+    all_members = get_members()
+    activity    = cache_get(f"activity_{today.strftime('%Y-%m-%d')}") or {}
+    members     = [m for m in all_members if activity.get(m["name"], {}).get("active", True)]
+    if not members:
+        members = all_members
+
+    events_by_member = {}
+    for m in members:
+        events_by_member[m["name"]] = get_scheduled_events(m["uri"], start_utc, end_utc)
+
+    FR_DAYS_LONG = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"]
+    week_days  = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+    day_labels = []
+    for i in range(7):
+        d = today + timedelta(days=i)
+        wday = d.weekday()
+        day_labels.append(f"{FR_DAYS_LONG[wday]} {d.day} {FR_MONTHS[d.month-1]}")
+
+    result = {
+        "week_label":       f"7 prochains jours — {today.day} {FR_MONTHS[today.month-1]} au {end.day} {FR_MONTHS[end.month-1]}",
+        "week_days":        week_days,
+        "day_labels":       day_labels,
+        "events_by_member": events_by_member,
+        "member_names":     [m["name"] for m in members],
+    }
+    cache_set(ckey, result, ttl=1800)
+    return result
