@@ -322,13 +322,16 @@ def get_next7_data() -> dict:
 
 # ── Événements planifiés ──────────────────────────────────────────────────────
 def get_scheduled_events(user_uri, start_utc, end_utc):
-    data = api_get(f"{CALENDLY_BASE}/scheduled_events", {
-        "user": user_uri,
-        "min_start_time": start_utc,
-        "max_start_time": end_utc,
-        "status": "active",
-        "count": 100,
-    })
+    try:
+        data = api_get(f"{CALENDLY_BASE}/scheduled_events", {
+            "user": user_uri,
+            "min_start_time": start_utc,
+            "max_start_time": end_utc,
+            "status": "active",
+            "count": 100,
+        })
+    except Exception:
+        return []
     events = []
     for e in data.get("collection", []):
         try:
