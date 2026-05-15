@@ -277,6 +277,14 @@
   <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>2 RDV</div>
   <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#ef4444;border:1.5px solid #dc2626"></div>4+ RDV</div>
   <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Hors horaires</div>
+  <!-- Filtre type d'événement (visible seulement sur l'onglet Événements) -->
+  <div id="evTypeFilterWrap" style="display:none;align-items:center;gap:6px">
+    <span style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Type</span>
+    <select id="evTypeSelect" onchange="setEventTypeFilter(this.value)"
+      style="height:26px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#1e293b;padding:0 8px;font-size:11px;cursor:pointer;outline:none">
+      <option value="all">Tous les types</option>
+    </select>
+  </div>
   <span class="closer-stats" id="closerStats"></span>
 </div>
 
@@ -315,7 +323,8 @@ let weekOffset     = 0;
 let next7Mode      = false;
 let next7Cache     = null;
 let weekCache      = {};
-let eventsCache    = null;
+let eventsCache      = null;
+let eventTypeFilter  = 'all';
 let membersCache   = null;
 let loading        = false;
 let activityStatus = {};
@@ -501,18 +510,19 @@ function renderEvents(evData, weekData) {
     const label = evData.day_labels[di];
     const stats = slotStats[date] || {rdv:0, dispo:0, off:0};
 
-    // Filter events
+    // Filter events (closer + event type)
+    const typeOk = e => eventTypeFilter === 'all' || e.name === eventTypeFilter;
     let events = [];
     if (isGeneral) {
       evData.member_names.filter(n => !excludedMembers.has(n)).forEach(n => {
         (evData.events_by_member[n] || [])
-          .filter(e => e.date === date)
+          .filter(e => e.date === date && typeOk(e))
           .forEach(e => events.push({...e, closer: n}));
       });
       events.sort((a,b) => a.start.localeCompare(b.start));
     } else {
       events = (evData.events_by_member[currentView] || [])
-        .filter(e => e.date === date)
+        .filter(e => e.date === date && typeOk(e))
         .map(e => ({...e, closer: currentView}));
     }
 
@@ -552,6 +562,21 @@ async function loadEventsTab() {
     eventsCache = null; // force refresh
     const evData   = await fetchEvents();
     const weekData = next7Mode ? next7Cache : weekCache[weekOffset];
+
+    // Peuple le dropdown des types d'événements
+    const allTypes = new Set();
+    Object.values(evData.events_by_member || {}).forEach(evts =>
+      evts.forEach(e => allTypes.add(e.name))
+    );
+    const typeSelect = document.getElementById('evTypeSelect');
+    typeSelect.innerHTML = '<option value="all">Tous les types</option>';
+    [...allTypes].sort().forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      typeSelect.appendChild(o);
+    });
+    typeSelect.value = eventTypeFilter;
+
     renderEvents(evData, weekData);
     setSyncTime();
   } catch(e) {
@@ -559,6 +584,11 @@ async function loadEventsTab() {
   } finally {
     setLoading(false);
   }
+}
+
+function setEventTypeFilter(val) {
+  eventTypeFilter = val;
+  if (eventsCache) renderEvents(eventsCache, next7Mode ? next7Cache : weekCache[weekOffset]);
 }
 
 async function loadActivity() {
@@ -850,6 +880,8 @@ function switchTab(tab) {
   const isEvents = tab === 'events';
   document.getElementById('printArea').style.display      = isEvents ? 'none' : '';
   document.getElementById('eventsContainer').classList.toggle('active', isEvents);
+
+  document.getElementById('evTypeFilterWrap').style.display = isEvents ? 'flex' : 'none';
 
   if (isEvents) {
     document.getElementById('legendTitle').textContent = 'Événements';
