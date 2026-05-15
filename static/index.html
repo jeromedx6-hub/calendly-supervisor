@@ -150,6 +150,37 @@
   .diag-cross { color: #dc2626; font-size: 14px; }
   .diag-loading { text-align: center; padding: 40px; color: #94a3b8; font-size: 13px; }
 
+  /* Settings drawer */
+  .settings-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;display:none; }
+  .settings-overlay.open { display:block; }
+  .settings-drawer {
+    position:fixed;top:0;right:-360px;width:340px;height:100%;
+    background:#fff;z-index:201;box-shadow:-4px 0 32px rgba(0,0,0,0.25);
+    transition:right 0.25s ease;display:flex;flex-direction:column;
+  }
+  .settings-drawer.open { right:0; }
+  .settings-hdr {
+    background:#0f172a;padding:16px 20px;
+    display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+  }
+  .settings-hdr h2 { color:#fff;font-size:14px;font-weight:700;margin:0; }
+  .settings-hdr-close { background:transparent;border:none;color:#64748b;font-size:22px;cursor:pointer;line-height:1;padding:0; }
+  .settings-hdr-close:hover { color:#fff; }
+  .settings-body { flex:1;overflow-y:auto;padding:20px; }
+  .settings-note { font-size:11px;color:#94a3b8;line-height:1.5;margin-bottom:16px;padding:10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0; }
+  .settings-section { font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px; }
+  .member-row { display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f1f5f9; }
+  .member-row:last-child { border-bottom:none; }
+  .member-info { display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500; }
+  .toggle-btn {
+    height:26px;padding:0 11px;border-radius:20px;border:1.5px solid;
+    font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;white-space:nowrap;
+  }
+  .toggle-btn.included { background:#dcfce7;border-color:#86efac;color:#166534; }
+  .toggle-btn.included:hover { background:#fee2e2;border-color:#fca5a5;color:#991b1b; }
+  .toggle-btn.excluded { background:#fee2e2;border-color:#fca5a5;color:#991b1b; }
+  .toggle-btn.excluded:hover { background:#dcfce7;border-color:#86efac;color:#166534; }
+
   /* Print */
   @media print {
     .topbar, .legend-bar { display: none !important; }
@@ -180,6 +211,7 @@
     <option value="-4">🌍 America/New_York (UTC-4)</option>
   </select>
 
+  <button onclick="openSettings()" style="background:#475569!important;border-color:#475569!important;color:#fff!important;font-weight:500;height:32px;border-radius:6px;border:1px solid;padding:0 10px;font-size:12px;cursor:pointer;">⚙️ Membres</button>
   <button id="btnNext7" onclick="toggleNext7()" style="background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important;font-weight:500;height:32px;border-radius:6px;border:1px solid;padding:0 10px;font-size:12px;cursor:pointer;">🗓 7 prochains jours</button>
   <button class="btn-refresh" id="btnRefresh" onclick="hardRefresh()">↻ Actualiser</button>
   <button class="btn-pdf" onclick="window.print()">⬇ Export PDF</button>
@@ -223,18 +255,112 @@
   <div class="cal-grid" id="calGrid"></div>
 </div>
 
+<!-- Settings drawer -->
+<div class="settings-overlay" id="settingsOverlay" onclick="closeSettings()"></div>
+<div class="settings-drawer" id="settingsDrawer">
+  <div class="settings-hdr">
+    <h2>⚙️ Membres</h2>
+    <button class="settings-hdr-close" onclick="closeSettings()">×</button>
+  </div>
+  <div class="settings-body">
+    <p class="settings-note">Les membres <strong>exclus</strong> ne sont plus comptabilisés dans les calculs de disponibilité (vue générale, compteur RDV). Ils restent visibles en vue individuelle.</p>
+    <div class="settings-section">Membres de l'organisation</div>
+    <div id="settingsMemberList"><p style="color:#94a3b8;font-size:12px">Chargement…</p></div>
+  </div>
+</div>
+
 <script>
 const FR_DAYS   = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const FR_MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 
-let currentView  = 'general';
-let currentTab   = 'calendar';
-let weekOffset   = 0;
-let next7Mode    = false;
-let next7Cache   = null;
-let weekCache    = {};
-let membersCache = null;
-let loading      = false;
+let currentView    = 'general';
+let currentTab     = 'calendar';
+let weekOffset     = 0;
+let next7Mode      = false;
+let next7Cache     = null;
+let weekCache      = {};
+let membersCache   = null;
+let loading        = false;
+let activityStatus = {};
+let excludedMembers = new Set(JSON.parse(localStorage.getItem('calendly_excluded') || '[]'));
+
+// ── Settings / Exclusions ─────────────────────────────────────────────────
+function saveExclusions() {
+  localStorage.setItem('calendly_excluded', JSON.stringify([...excludedMembers]));
+}
+
+function getDotForMember(name) {
+  if (excludedMembers.has(name)) return '🚫';
+  const s = activityStatus[name];
+  if (!s) return '⚪';
+  return s.active ? '🟢' : '🔴';
+}
+
+function applyDropdownDots() {
+  const sel = document.getElementById('viewSelect');
+  for (let i = 1; i < sel.options.length; i++) {
+    const opt = sel.options[i];
+    opt.textContent = getDotForMember(opt.value) + ' ' + opt.value;
+  }
+}
+
+function renderSettingsList() {
+  const list = document.getElementById('settingsMemberList');
+  if (!membersCache) { list.innerHTML = '<p style="color:#94a3b8;font-size:12px">Chargement…</p>'; return; }
+  list.innerHTML = membersCache.map(m => {
+    const excl = excludedMembers.has(m.name);
+    const dot  = getDotForMember(m.name);
+    const cls  = excl ? 'excluded' : 'included';
+    const lbl  = excl ? '🚫 Exclu' : '✓ Inclus';
+    const safe = m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<div class="member-row">
+      <div class="member-info"><span>${dot}</span><span>${m.name}</span></div>
+      <button class="toggle-btn ${cls}" onclick="toggleExclusion('${safe}')">${lbl}</button>
+    </div>`;
+  }).join('');
+}
+
+function toggleExclusion(name) {
+  if (excludedMembers.has(name)) excludedMembers.delete(name);
+  else excludedMembers.add(name);
+  saveExclusions();
+  renderSettingsList();
+  applyDropdownDots();
+  if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
+  else if (next7Cache && next7Mode) renderGrid(next7Cache);
+}
+
+function openSettings()  {
+  renderSettingsList();
+  document.getElementById('settingsDrawer').classList.add('open');
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settingsDrawer').classList.remove('open');
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+// ── Recompute general grid client-side (pour exclure membres) ────────────
+function recomputeGeneralGrid(data) {
+  const order = data.user_order.filter(n => !excludedMembers.has(n));
+  const nDays = 7, nSlots = data.slot_labels.length;
+  const grid = [];
+  for (let di = 0; di < nDays; di++) {
+    const day = [];
+    for (let si = 0; si < nSlots; si++) {
+      const statuses = order.map(n => data.users[n]?.[di]?.[si] || 'grey');
+      const booked = statuses.filter(s => s === 'red').length;
+      const free   = statuses.filter(s => s === 'green').length;
+      const total  = booked + free;
+      if (total === 0)      day.push({color:'grey',   label:'',               booked:0,      free:0});
+      else if (free === 0)  day.push({color:'red',    label:`${booked}/${total}`, booked, free:0});
+      else if (free === 1)  day.push({color:'orange', label:`${booked}/${total}`, booked, free:1});
+      else                  day.push({color:'green',  label:`${booked}/${total}`, booked, free});
+    }
+    grid.push(day);
+  }
+  return { grid, user_order: order };
+}
 
 // ── Today detection ────────────────────────────────────────────────────────
 const TODAY = new Date();
@@ -287,14 +413,8 @@ async function loadActivity() {
     const activity = await r.json();
     if (!activity || activity.error) return;
 
-    // Met à jour les dots directement via opt.value (= nom du membre)
-    const sel = document.getElementById('viewSelect');
-    for (let i = 1; i < sel.options.length; i++) {
-      const opt = sel.options[i];
-      const status = activity[opt.value];
-      if (!status) continue;
-      opt.textContent = (status.active ? '🟢' : '🔴') + ' ' + opt.value;
-    }
+    activityStatus = activity;
+    applyDropdownDots();
 
     // Recharge silencieusement pour exclure les inactifs
     weekCache = {};
@@ -323,7 +443,7 @@ async function init() {
     members.forEach(m => {
       const opt = document.createElement('option');
       opt.value = m.name;
-      opt.textContent = '👤 ' + m.name;
+      opt.textContent = getDotForMember(m.name) + ' ' + m.name;
       sel.appendChild(opt);
     });
     await loadWeek(weekOffset);
@@ -363,7 +483,16 @@ function renderGrid(data) {
   const grid       = document.getElementById('calGrid');
   const isRdvCount = currentTab === 'rdv_count';
   const isGeneral  = currentView === 'general';
-  const gridData   = isGeneral ? data.general : data.users[currentView];
+
+  // Recompute general grid if members are excluded
+  let effectiveGeneral  = data.general;
+  let effectiveOrder    = data.user_order;
+  if (isGeneral && excludedMembers.size > 0) {
+    const r = recomputeGeneralGrid(data);
+    effectiveGeneral = r.grid;
+    effectiveOrder   = r.user_order;
+  }
+  const gridData = isGeneral ? effectiveGeneral : data.users[currentView];
   const weekDays  = next7Mode ? getNext7DayLabels() : getWeekDayLabels(weekOffset);
   const todayIdx  = next7Mode ? 0 : getTodayIdx(weekOffset);
 
@@ -425,8 +554,8 @@ function renderGrid(data) {
         else                              { cell.classList.add('slot-grey'); }
 
         if (slot.color !== 'grey') {
-          const booked = data.user_order.filter(n => data.users[n]?.[di]?.[si] === 'red');
-          const free   = data.user_order.filter(n => data.users[n]?.[di]?.[si] === 'green');
+          const booked = effectiveOrder.filter(n => data.users[n]?.[di]?.[si] === 'red');
+          const free   = effectiveOrder.filter(n => data.users[n]?.[di]?.[si] === 'green');
           let tip = '';
           if (booked.length) tip += '🔴 RDV: ' + booked.join(', ');
           if (booked.length && free.length) tip += '\n';
