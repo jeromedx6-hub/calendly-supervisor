@@ -179,6 +179,13 @@
   .toggle-btn.excluded { background:#fee2e2;border-color:#fca5a5;color:#991b1b; }
   .toggle-btn.excluded:hover { background:#dcfce7;border-color:#86efac;color:#166534; }
 
+  /* Settings tab bar */
+  .settings-tab-bar { display:flex;border-bottom:1px solid #1e293b;flex-shrink:0;background:#0f172a; }
+  .stab { flex:1;padding:10px;font-size:11px;font-weight:600;cursor:pointer;border:none;
+    background:transparent;color:#64748b;border-bottom:3px solid transparent;transition:all 0.15s; }
+  .stab:hover { color:#cbd5e1; }
+  .stab.active { color:#fff;border-bottom-color:#60a5fa; }
+
   /* Print */
   @media print {
     .topbar, .tab-bar, .legend-bar { display: none !important; }
@@ -256,13 +263,24 @@
 <div class="settings-overlay" id="settingsOverlay" onclick="closeSettings()"></div>
 <div class="settings-drawer" id="settingsDrawer">
   <div class="settings-hdr">
-    <h2>⚙️ Membres</h2>
+    <h2>⚙️ Paramètres</h2>
     <button class="settings-hdr-close" onclick="closeSettings()">×</button>
   </div>
-  <div class="settings-body">
+  <div class="settings-tab-bar">
+    <button class="stab active" id="stab-members" onclick="switchSettingsTab('members')">👥 Membres</button>
+    <button class="stab"        id="stab-events"  onclick="switchSettingsTab('events')">📋 Événements</button>
+  </div>
+  <!-- Section Membres -->
+  <div class="settings-body" id="settingsSectionMembers">
     <p class="settings-note">Les membres <strong>exclus</strong> ne sont plus comptabilisés dans les calculs de disponibilité. Ils restent visibles en vue individuelle.</p>
     <div class="settings-section">Membres de l'organisation</div>
     <div id="settingsMemberList"><p style="color:#94a3b8;font-size:12px">Chargement…</p></div>
+  </div>
+  <!-- Section Événements -->
+  <div class="settings-body" id="settingsSectionEvents" style="display:none">
+    <p class="settings-note">Les types d'événements <strong>désactivés</strong> ne sont plus comptés comme RDV posés — leurs créneaux apparaissent disponibles dans le calendrier.</p>
+    <div class="settings-section">Types d'événements</div>
+    <div id="settingsEventList"><p style="color:#94a3b8;font-size:12px">Chargement…</p></div>
   </div>
 </div>
 
@@ -285,7 +303,9 @@ let activityStatus  = {};
 let eventTypeFilter = 'all';
 let loading         = false;
 
-let excludedMembers = new Set(JSON.parse(localStorage.getItem('calendly_excluded') || '[]'));
+let excludedMembers     = new Set(JSON.parse(localStorage.getItem('calendly_excluded') || '[]'));
+let excludedEventTypes  = new Set(JSON.parse(localStorage.getItem('calendly_excluded_event_types') || '[]'));
+let allEventTypeNames   = []; // noms complets chargés depuis /api/event_type_names
 
 // ── Settings / Exclusions ──────────────────────────────────────────────────
 function saveExclusions() {
@@ -336,12 +356,60 @@ function toggleExclusion(name) {
 
 function openSettings()  {
   renderSettingsList();
+  renderSettingsEventList();
   document.getElementById('settingsDrawer').classList.add('open');
   document.getElementById('settingsOverlay').classList.add('open');
 }
 function closeSettings() {
   document.getElementById('settingsDrawer').classList.remove('open');
   document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+function switchSettingsTab(tab) {
+  document.querySelectorAll('.stab').forEach(b => b.classList.remove('active'));
+  document.getElementById('stab-' + tab).classList.add('active');
+  document.getElementById('settingsSectionMembers').style.display = tab === 'members' ? '' : 'none';
+  document.getElementById('settingsSectionEvents').style.display  = tab === 'events'  ? '' : 'none';
+}
+
+// ── Event type exclusions ──────────────────────────────────────────────────
+function saveEventTypeExclusions() {
+  localStorage.setItem('calendly_excluded_event_types', JSON.stringify([...excludedEventTypes]));
+}
+
+function renderSettingsEventList() {
+  const list = document.getElementById('settingsEventList');
+  if (!allEventTypeNames.length) {
+    list.innerHTML = '<p style="color:#94a3b8;font-size:12px">Chargement des types…</p>';
+    return;
+  }
+  list.innerHTML = allEventTypeNames.map(name => {
+    const excl = excludedEventTypes.has(name);
+    const cls  = excl ? 'excluded' : 'included';
+    const lbl  = excl ? '🚫 Désactivé' : '✓ Actif';
+    const safe = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<div class="member-row">
+      <div class="member-info" style="font-size:12px">${name}</div>
+      <button class="toggle-btn ${cls}" onclick="toggleEventTypeExclusion('${safe}')">${lbl}</button>
+    </div>`;
+  }).join('');
+}
+
+function toggleEventTypeExclusion(name) {
+  if (excludedEventTypes.has(name)) excludedEventTypes.delete(name);
+  else excludedEventTypes.add(name);
+  saveEventTypeExclusions();
+  renderSettingsEventList();
+  // Mettre à jour le préfixe 🚫 dans le dropdown filtre
+  const sel = document.getElementById('evTypeSelect');
+  for (let i = 1; i < sel.options.length; i++) {
+    const opt = sel.options[i];
+    const t   = opt.value;
+    opt.textContent = (excludedEventTypes.has(t) ? '🚫 ' : '') + t;
+  }
+  // Re-render la grille
+  const data = next7Mode ? next7Cache : weekCache[weekOffset];
+  if (data) renderGrid(data);
 }
 
 // ── Day helpers (basés sur les dates renvoyées par le serveur) ─────────────
@@ -359,13 +427,37 @@ function getTodayIdx(weekDays) {
   return weekDays.indexOf(todayStr);
 }
 
-// ── Event-type filter ──────────────────────────────────────────────────────
-// Retourne le statut effectif d'un slot en tenant compte du filtre
-function applyEventTypeFilter(memberName, di, rawStatus, slotLabel, weekDays) {
-  if (eventTypeFilter === 'all' || !eventsCache) return rawStatus;
-  if (rawStatus === 'grey') return 'grey';
+// ── Filtre d'exclusion d'event types ─────────────────────────────────────
+// Si un slot est rouge à cause d'un event type désactivé, on le traite comme libre
+function applyExclusionFilter(memberName, di, rawStatus, slotLabel, weekDays) {
+  if (excludedEventTypes.size === 0 || !eventsCache || rawStatus !== 'red') return rawStatus;
   const date = weekDays[di];
   if (!date) return rawStatus;
+  const [slotH, slotM] = slotLabel.split(':').map(Number);
+  const slotStart = slotH * 60 + slotM;
+  const slotEnd   = slotStart + 30;
+  const overlapping = (eventsCache.events_by_member[memberName] || []).filter(e => {
+    if (e.date !== date) return false;
+    const [eH, eM] = e.start.split(':').map(Number);
+    const [fH, fM] = e.end.split(':').map(Number);
+    return (eH * 60 + eM) < slotEnd && (fH * 60 + fM) > slotStart;
+  });
+  if (overlapping.length === 0) return rawStatus; // RDV sans détail → garder rouge
+  // Si tous les events qui se chevauchent sont désactivés → traiter comme dispo
+  return overlapping.every(e => excludedEventTypes.has(e.name)) ? 'green' : 'red';
+}
+
+// ── Filtre par type d'événement sélectionné ───────────────────────────────
+// Retourne le statut effectif d'un slot en tenant compte du filtre + exclusions
+function applyEventTypeFilter(memberName, di, rawStatus, slotLabel, weekDays) {
+  // 1. Appliquer l'exclusion d'abord
+  let status = applyExclusionFilter(memberName, di, rawStatus, slotLabel, weekDays);
+
+  // 2. Appliquer le filtre de type si actif
+  if (eventTypeFilter === 'all' || !eventsCache) return status;
+  if (status === 'grey') return 'grey';
+  const date = weekDays[di];
+  if (!date) return status;
   const [slotH, slotM] = slotLabel.split(':').map(Number);
   const slotStart = slotH * 60 + slotM;
   const slotEnd   = slotStart + 30;
@@ -446,17 +538,26 @@ async function loadEventTypeNames() {
     if (!r.ok) return;
     const names = await r.json();
     if (!Array.isArray(names)) return;
+    allEventTypeNames = names;
+
+    // Peupler le dropdown filtre
     const sel = document.getElementById('evTypeSelect');
     const prev = sel.value;
     sel.innerHTML = '<option value="all">📋 Tous les événements</option>';
     names.forEach(t => {
       const o = document.createElement('option');
-      o.value = t; o.textContent = t;
+      o.value = t; o.textContent = (excludedEventTypes.has(t) ? '🚫 ' : '') + t;
       sel.appendChild(o);
     });
     sel.value = names.includes(prev) ? prev : 'all';
     eventTypeFilter = sel.value;
-    if (eventTypeFilter !== 'all') {
+
+    // Mettre à jour la liste dans le panel settings si ouvert
+    renderSettingsEventList();
+
+    // Re-render si exclusions ou filtre actif
+    const needsRender = eventTypeFilter !== 'all' || excludedEventTypes.size > 0;
+    if (needsRender) {
       const data = next7Mode ? next7Cache : weekCache[weekOffset];
       if (data) renderGrid(data);
     }
@@ -543,7 +644,7 @@ function renderGrid(data) {
   const isGeneral = currentView === 'general';
 
   // Recomputer la grille générale si nécessaire (exclusions ou filtre event)
-  const needsRecompute = isGeneral && (excludedMembers.size > 0 || eventTypeFilter !== 'all');
+  const needsRecompute = isGeneral && (excludedMembers.size > 0 || eventTypeFilter !== 'all' || excludedEventTypes.size > 0);
   let effectiveGeneral = data.general;
   let effectiveOrder   = data.user_order;
   if (needsRecompute) {
