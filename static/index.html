@@ -709,12 +709,15 @@ function findEventAtSlot(memberName, date, slotLabel) {
   const [slotH, slotM] = slotLabel.split(':').map(Number);
   const slotStart = slotH * 60 + slotM;
   const slotEnd   = slotStart + 30;
-  return (eventsCache.events_by_member[memberName] || []).find(e => {
+  // Cherche tous les events qui chevauchent ce créneau de 30 min, retourne le premier
+  const events = (eventsCache.events_by_member[memberName] || []).filter(e => {
     if (e.date !== date) return false;
     const [eH, eM] = e.start.split(':').map(Number);
     const [fH, fM] = e.end.split(':').map(Number);
     return (eH * 60 + eM) < slotEnd && (fH * 60 + fM) > slotStart;
-  }) || null;
+  });
+  // Priorité : l'event qui commence exactement sur ce créneau, sinon le premier qui chevauche
+  return events.find(e => e.start === slotLabel) || events[0] || null;
 }
 
 function closeSlotPopup() {
@@ -732,6 +735,15 @@ async function openSlotPopup(closerNames, slotLabel, date, data) {
   body.innerHTML = '<div class="slot-popup-loading">⏳ Chargement des leads…</div>';
   document.getElementById('slotPopupOverlay').classList.add('open');
   document.getElementById('slotPopup').classList.add('open');
+
+  // Charger les événements si pas encore en cache (chargement async pas encore terminé)
+  if (!eventsCache) {
+    try {
+      const url = next7Mode ? '/api/events/next7' : `/api/events?offset=${weekOffset}`;
+      const r   = await fetch(url);
+      if (r.ok) eventsCache = await r.json();
+    } catch(e) {}
+  }
 
   // Pour chaque closer avec un RDV, récupérer les invités
   const results = await Promise.all(closerNames.map(async name => {
@@ -753,12 +765,14 @@ async function openSlotPopup(closerNames, slotLabel, date, data) {
 
   body.innerHTML = results.map(({ closer, event, invitees }) => {
     const dispName  = getDisplayName(closer);
-    const leadNames = invitees.length ? invitees.map(i => i.name).join(', ') : '—';
-    const evType    = event?.name || '';
+    const validNames = (Array.isArray(invitees) ? invitees : []).map(i => i.name).filter(Boolean);
+    const leadNames  = validNames.length ? validNames.join(', ') : '—';
+    const evType     = event?.name || '';
+    const noEvent    = !event ? '<div class="slot-popup-meta" style="color:#f59e0b">⚠ Détails non disponibles</div>' : '';
     return `<div class="slot-popup-rdv">
       <div class="slot-popup-closer">👤 ${dispName}</div>
       <div class="slot-popup-lead">🎯 Lead : <strong>${leadNames}</strong></div>
-      ${evType ? `<div class="slot-popup-meta">📋 ${evType} · ${event.start}–${event.end}</div>` : ''}
+      ${evType ? `<div class="slot-popup-meta">📋 ${evType} · ${event.start}–${event.end}</div>` : noEvent}
     </div>`;
   }).join('');
 }
