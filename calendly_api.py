@@ -400,6 +400,54 @@ def get_event_invitees(event_uri: str) -> list:
     return invitees
 
 
+def get_slot_invitees(member_name: str, date: str, time: str) -> dict:
+    """Retourne l'événement + les invités pour un membre/date/créneau donnés."""
+    ckey = f"slot_inv_{member_name}_{date}_{time.replace(':', '')}"
+    cached = cache_get(ckey)
+    if cached is not None:
+        return cached
+
+    # Trouver l'URI du membre
+    members = get_members()
+    member  = next((m for m in members if m["name"] == member_name), None)
+    if not member:
+        result = {"invitees": [], "event": None, "error": "membre introuvable"}
+        cache_set(ckey, result, ttl=300)
+        return result
+
+    # Plage UTC couvrant toute la journée Paris
+    day       = datetime.strptime(date, "%Y-%m-%d")
+    start_utc = (day - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT00:00:00.000000Z")
+    end_utc   = (day - timedelta(hours=PARIS_OFFSET) + timedelta(days=1)).strftime("%Y-%m-%dT00:00:00.000000Z")
+
+    events = get_scheduled_events(member["uri"], start_utc, end_utc)
+
+    # Trouver l'événement qui chevauche le créneau de 30 min
+    slotH, slotM = (int(x) for x in time.split(':'))
+    slot_s = slotH * 60 + slotM
+    slot_e = slot_s + 30
+
+    matched = None
+    for e in events:
+        eH, eM = (int(x) for x in e["start"].split(':'))
+        fH, fM = (int(x) for x in e["end"].split(':'))
+        if eH * 60 + eM < slot_e and fH * 60 + fM > slot_s:
+            matched = e
+            # Priorité à l'événement qui commence exactement sur le créneau
+            if e["start"] == time:
+                break
+
+    if not matched or not matched.get("uri"):
+        result = {"invitees": [], "event": matched}
+        cache_set(ckey, result, ttl=300)
+        return result
+
+    invitees = get_event_invitees(matched["uri"])
+    result   = {"invitees": invitees, "event": matched}
+    cache_set(ckey, result, ttl=1800)
+    return result
+
+
 def get_events_week_data(week_offset: int) -> dict:
     ckey = f"events_{week_offset}"
     cached = cache_get(ckey)

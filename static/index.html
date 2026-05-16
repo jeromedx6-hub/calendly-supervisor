@@ -736,26 +736,17 @@ async function openSlotPopup(closerNames, slotLabel, date, data) {
   document.getElementById('slotPopupOverlay').classList.add('open');
   document.getElementById('slotPopup').classList.add('open');
 
-  // Charger les événements si pas encore en cache (chargement async pas encore terminé)
-  if (!eventsCache) {
-    try {
-      const url = next7Mode ? '/api/events/next7' : `/api/events?offset=${weekOffset}`;
-      const r   = await fetch(url);
-      if (r.ok) eventsCache = await r.json();
-    } catch(e) {}
-  }
-
-  // Pour chaque closer avec un RDV, récupérer les invités
+  // Appel direct /api/slot_invitees pour chaque closer — indépendant de eventsCache
   const results = await Promise.all(closerNames.map(async name => {
-    const event    = findEventAtSlot(name, date, slotLabel);
-    let invitees   = [];
-    if (event?.uri) {
-      try {
-        const r = await fetch(`/api/invitees?event_uri=${encodeURIComponent(event.uri)}`);
-        if (r.ok) invitees = await r.json();
-      } catch(e) {}
+    try {
+      const params = new URLSearchParams({ member_name: name, date, time: slotLabel });
+      const r = await fetch(`/api/slot_invitees?${params}`);
+      if (!r.ok) return { closer: name, event: null, invitees: [] };
+      const data = await r.json();
+      return { closer: name, event: data.event || null, invitees: data.invitees || [] };
+    } catch(e) {
+      return { closer: name, event: null, invitees: [] };
     }
-    return { closer: name, event, invitees };
   }));
 
   if (!results.length) {

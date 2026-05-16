@@ -87,6 +87,16 @@ def invitees():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/slot_invitees")
+def slot_invitees():
+    try:
+        member_name = request.args.get("member_name", "")
+        date        = request.args.get("date", "")
+        time        = request.args.get("time", "")
+        return jsonify(calendly_api.get_slot_invitees(member_name, date, time))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/event_type_names")
 def event_type_names():
     try:
