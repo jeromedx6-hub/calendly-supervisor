@@ -8,6 +8,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; background: #f1f5f9; color: #1e293b; font-size: 13px; }
 
+  /* ── Topbar ── */
   .topbar {
     background: #0f172a; padding: 10px 20px;
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -43,6 +44,7 @@
   .sync-dot.loading { background: #f59e0b; animation: pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
+  /* ── Tab bar ── */
   .tab-bar {
     background: #0f172a; border-bottom: 1px solid #1e293b;
     padding: 0 20px; display: flex; align-items: flex-end; gap: 2px;
@@ -56,6 +58,7 @@
   .tab-btn:hover { color: #cbd5e1; }
   .tab-btn.active { color: #fff; border-bottom-color: #60a5fa; }
 
+  /* ── Legend bar ── */
   .legend-bar {
     background: #fff; border-bottom: 1px solid #e2e8f0;
     padding: 7px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
@@ -66,12 +69,12 @@
   .legend-sep { width: 1px; height: 14px; background: #e2e8f0; }
   .closer-stats { margin-left: auto; font-size: 11px; color: #94a3b8; }
 
+  /* ── Stats ── */
   .grid-container { padding: 14px 20px; overflow-x: auto; }
   .view-title { font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
   .view-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
   .badge-global { background: #e0e7ff; color: #4338ca; }
   .badge-closer { background: #dcfce7; color: #166534; }
-
   .stats-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
   .stat-card { background: #fff; border-radius: 8px; padding: 10px 14px; border: 1px solid #e2e8f0; min-width: 130px; }
   .stat-label { font-size: 10px; color: #94a3b8; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -80,6 +83,7 @@
   .stat-value.orange { color: #ea580c; }
   .stat-value.red { color: #dc2626; }
 
+  /* ── Calendar grid ── */
   .cal-grid {
     display: grid;
     grid-template-columns: 56px repeat(7, 1fr);
@@ -114,13 +118,13 @@
   .slot-green  { background: #dcfce7; color: #15803d; }
   .slot-orange { background: #ffedd5; color: #c2410c; }
   .slot-red    { background: #fee2e2; color: #b91c1c; }
-  .slot-loading { background: #f8fafc; }
   .slot-heat-0 { background: #f0fdf4; color: #166534; }
   .slot-heat-1 { background: #fff7ed; color: #9a3412; }
   .slot-heat-2 { background: #fee2e2; color: #b91c1c; }
   .slot-heat-3 { background: #fca5a5; color: #7f1d1d; font-size: 12px; }
   .slot-heat-4 { background: #ef4444; color: #fff;    font-size: 12px; }
 
+  /* Tooltip */
   .slot[data-tip] { cursor: pointer; }
   .slot[data-tip]:hover::after {
     content: attr(data-tip);
@@ -133,11 +137,11 @@
     line-height: 1.6;
   }
 
-  /* Loading skeleton */
+  /* Skeleton */
   .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
   @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
-  /* Diagnostic */
+  /* ── Diagnostic ── */
   .diag-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
   .diag-table th { background: #0f172a; color: #94a3b8; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 14px; text-align: left; }
   .diag-table td { padding: 10px 14px; font-size: 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
@@ -150,7 +154,7 @@
   .diag-cross { color: #dc2626; font-size: 14px; }
   .diag-loading { text-align: center; padding: 40px; color: #94a3b8; font-size: 13px; }
 
-  /* Settings drawer */
+  /* ── Settings drawer ── */
   .settings-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;display:none; }
   .settings-overlay.open { display:block; }
   .settings-drawer {
@@ -181,42 +185,9 @@
   .toggle-btn.excluded { background:#fee2e2;border-color:#fca5a5;color:#991b1b; }
   .toggle-btn.excluded:hover { background:#dcfce7;border-color:#86efac;color:#166534; }
 
-  /* Events view */
-  .events-container { padding: 14px 20px; display: none; }
-  .events-container.active { display: block; }
-  .ev-day-section { margin-bottom: 20px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-  .ev-day-header {
-    background: #0f172a; padding: 10px 16px;
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .ev-day-title { color: #fff; font-size: 13px; font-weight: 700; }
-  .ev-day-stats { display: flex; gap: 12px; font-size: 11px; }
-  .ev-stat { display: flex; align-items: center; gap: 4px; }
-  .ev-stat-rdv   { color: #fca5a5; }
-  .ev-stat-dispo { color: #86efac; }
-  .ev-stat-off   { color: #64748b; }
-  .ev-body { padding: 0; }
-  .ev-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 12px;
-  }
-  .ev-item:last-child { border-bottom: none; }
-  .ev-item:hover { background: #f8fafc; }
-  .ev-time { color: #334155; font-weight: 700; font-size: 12px; min-width: 110px; white-space: nowrap; }
-  .ev-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .ev-dot-rdv    { background: #ef4444; }
-  .ev-dot-dispo  { background: #22c55e; }
-  .ev-dot-off    { background: #cbd5e1; }
-  .ev-closer { color: #6366f1; font-weight: 600; min-width: 140px; }
-  .ev-name { color: #1e293b; flex: 1; }
-  .ev-duration { background: #f1f5f9; color: #64748b; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
-  .ev-empty { padding: 14px 16px; color: #94a3b8; font-size: 12px; font-style: italic; }
-  .ev-today .ev-day-header { background: #1e3a5f; }
-  .ev-today .ev-day-title { color: #93c5fd; }
-
   /* Print */
   @media print {
-    .topbar, .legend-bar { display: none !important; }
+    .topbar, .tab-bar, .legend-bar { display: none !important; }
     body { background: white; }
     .grid-container { padding: 0; }
     .cal-grid { box-shadow: none; }
@@ -225,9 +196,11 @@
 </head>
 <body>
 
+<!-- ── Topbar ─────────────────────────────────────────────────────────── -->
 <div class="topbar">
   <div class="logo">📅 <span>Calendly</span> Supervisor</div>
 
+  <!-- Closer + filtre événement empilés -->
   <div style="display:flex;flex-direction:column;gap:4px">
     <select id="viewSelect" onchange="switchView(this.value)">
       <option value="general">📊 Vue Générale</option>
@@ -237,17 +210,12 @@
     </select>
   </div>
 
+  <!-- Navigation semaine -->
   <div class="week-nav">
-    <button onclick="prevWeek()" id="btnPrev">←</button>
+    <button onclick="prevWeek()">←</button>
     <span class="week-label" id="weekLabel">Chargement…</span>
-    <button onclick="nextWeek()" id="btnNext">→</button>
+    <button onclick="nextWeek()">→</button>
   </div>
-
-  <select id="tzSelect">
-    <option value="2">🌍 Europe/Paris (UTC+2)</option>
-    <option value="1">🌍 Europe/London (UTC+1)</option>
-    <option value="-4">🌍 America/New_York (UTC-4)</option>
-  </select>
 
   <button onclick="openSettings()" style="background:#475569!important;border-color:#475569!important;color:#fff!important;font-weight:500;height:32px;border-radius:6px;border:1px solid;padding:0 10px;font-size:12px;cursor:pointer;">⚙️ Membres</button>
   <button id="btnNext7" onclick="toggleNext7()" style="background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important;font-weight:500;height:32px;border-radius:6px;border:1px solid;padding:0 10px;font-size:12px;cursor:pointer;">🗓 7 prochains jours</button>
@@ -260,12 +228,14 @@
   </div>
 </div>
 
+<!-- ── Tab bar ───────────────────────────────────────────────────────── -->
 <div class="tab-bar">
-  <button class="tab-btn active" id="tab-calendar" onclick="switchTab('calendar')">📊 Calendrier</button>
-  <button class="tab-btn" id="tab-rdv_count" onclick="switchTab('rdv_count')">📈 Compteur RDV</button>
-  <button class="tab-btn" id="tab-diagnostic" onclick="switchTab('diagnostic')">🔍 Diagnostic</button>
+  <button class="tab-btn active" id="tab-calendar"   onclick="switchTab('calendar')">📊 Calendrier</button>
+  <button class="tab-btn"        id="tab-rdv_count"  onclick="switchTab('rdv_count')">📈 Compteur RDV</button>
+  <button class="tab-btn"        id="tab-diagnostic" onclick="switchTab('diagnostic')">🔍 Diagnostic</button>
 </div>
 
+<!-- ── Legend bar ─────────────────────────────────────────────────────── -->
 <div class="legend-bar">
   <span class="legend-title" id="legendTitle">Vue Générale</span>
   <div class="legend-item legend-gen"><div class="legend-dot" style="background:#dcfce7;border:1.5px solid #86efac"></div>&gt;1 closer dispo</div>
@@ -284,6 +254,7 @@
   <span class="closer-stats" id="closerStats"></span>
 </div>
 
+<!-- ── Main content ───────────────────────────────────────────────────── -->
 <div class="grid-container" id="printArea">
   <div class="stats-row" id="statsRow"></div>
   <div class="view-title">
@@ -293,7 +264,7 @@
   <div class="cal-grid" id="calGrid"></div>
 </div>
 
-<!-- Settings drawer -->
+<!-- ── Settings drawer ────────────────────────────────────────────────── -->
 <div class="settings-overlay" id="settingsOverlay" onclick="closeSettings()"></div>
 <div class="settings-drawer" id="settingsDrawer">
   <div class="settings-hdr">
@@ -301,30 +272,34 @@
     <button class="settings-hdr-close" onclick="closeSettings()">×</button>
   </div>
   <div class="settings-body">
-    <p class="settings-note">Les membres <strong>exclus</strong> ne sont plus comptabilisés dans les calculs de disponibilité (vue générale, compteur RDV). Ils restent visibles en vue individuelle.</p>
+    <p class="settings-note">Les membres <strong>exclus</strong> ne sont plus comptabilisés dans les calculs de disponibilité. Ils restent visibles en vue individuelle.</p>
     <div class="settings-section">Membres de l'organisation</div>
     <div id="settingsMemberList"><p style="color:#94a3b8;font-size:12px">Chargement…</p></div>
   </div>
 </div>
 
 <script>
+// ── Constants ──────────────────────────────────────────────────────────────
 const FR_DAYS   = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const FR_MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 
-let currentView    = 'general';
-let currentTab     = 'calendar';
-let weekOffset     = 0;
-let next7Mode      = false;
-let next7Cache     = null;
-let weekCache      = {};
-let eventsCache      = null;
-let eventTypeFilter  = 'all';
-let membersCache   = null;
-let loading        = false;
-let activityStatus = {};
+// ── State ──────────────────────────────────────────────────────────────────
+let currentView     = 'general';
+let currentTab      = 'calendar';
+let weekOffset      = 0;
+let next7Mode       = false;
+
+let weekCache       = {};   // offset → data
+let next7Cache      = null;
+let eventsCache     = null; // { events_by_member, week_days, ... } pour la semaine/période courante
+let membersCache    = null;
+let activityStatus  = {};
+let eventTypeFilter = 'all';
+let loading         = false;
+
 let excludedMembers = new Set(JSON.parse(localStorage.getItem('calendly_excluded') || '[]'));
 
-// ── Settings / Exclusions ─────────────────────────────────────────────────
+// ── Settings / Exclusions ──────────────────────────────────────────────────
 function saveExclusions() {
   localStorage.setItem('calendly_excluded', JSON.stringify([...excludedMembers]));
 }
@@ -340,7 +315,8 @@ function applyDropdownDots() {
   const sel = document.getElementById('viewSelect');
   for (let i = 1; i < sel.options.length; i++) {
     const opt = sel.options[i];
-    opt.textContent = getDotForMember(opt.value) + ' ' + opt.value;
+    const name = opt.value;
+    opt.textContent = getDotForMember(name) + ' ' + name;
   }
 }
 
@@ -366,8 +342,8 @@ function toggleExclusion(name) {
   saveExclusions();
   renderSettingsList();
   applyDropdownDots();
-  if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
-  else if (next7Cache && next7Mode) renderGrid(next7Cache);
+  const data = next7Mode ? next7Cache : weekCache[weekOffset];
+  if (data) renderGrid(data);
 }
 
 function openSettings()  {
@@ -380,57 +356,72 @@ function closeSettings() {
   document.getElementById('settingsOverlay').classList.remove('open');
 }
 
-// ── Recompute general grid client-side (pour exclure membres) ────────────
+// ── Day helpers (basés sur les dates renvoyées par le serveur) ─────────────
+// weekDays = tableau de "YYYY-MM-DD" (data.week_days)
+function getWeekDayLabels(weekDays) {
+  return weekDays.map(dateStr => {
+    const d   = new Date(dateStr + 'T12:00:00');
+    const dow = d.getDay(); // 0=Dim … 6=Sam
+    return { day: FR_DAYS[dow === 0 ? 6 : dow - 1], date: d.getDate() };
+  });
+}
+
+function getTodayIdx(weekDays) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  return weekDays.indexOf(todayStr);
+}
+
+// ── Event-type filter ──────────────────────────────────────────────────────
+// Retourne le statut effectif d'un slot en tenant compte du filtre
+function applyEventTypeFilter(memberName, di, rawStatus, slotLabel, weekDays) {
+  if (eventTypeFilter === 'all' || !eventsCache) return rawStatus;
+  if (rawStatus === 'grey') return 'grey';
+  const date = weekDays[di];
+  if (!date) return rawStatus;
+  const [slotH, slotM] = slotLabel.split(':').map(Number);
+  const slotStart = slotH * 60 + slotM;
+  const slotEnd   = slotStart + 30;
+  const events = (eventsCache.events_by_member[memberName] || [])
+    .filter(e => e.date === date && e.name === eventTypeFilter);
+  for (const e of events) {
+    const [eH, eM] = e.start.split(':').map(Number);
+    const [fH, fM] = e.end.split(':').map(Number);
+    if ((eH * 60 + eM) < slotEnd && (fH * 60 + fM) > slotStart) return 'red';
+  }
+  return 'green'; // en heure de travail mais pas ce type d'event → dispo
+}
+
+function setEventTypeFilter(val) {
+  eventTypeFilter = val;
+  const data = next7Mode ? next7Cache : weekCache[weekOffset];
+  if (data) renderGrid(data);
+}
+
+// ── Recompute general grid côté client (exclusions + filtre event) ─────────
 function recomputeGeneralGrid(data) {
-  const order  = data.user_order.filter(n => !excludedMembers.has(n));
-  const wDates = eventsCache?.week_days || null;
-  const nDays  = 7, nSlots = data.slot_labels.length;
-  const grid   = [];
+  const order    = data.user_order.filter(n => !excludedMembers.has(n));
+  const weekDays = data.week_days || [];
+  const nDays    = 7, nSlots = data.slot_labels.length;
+  const grid     = [];
   for (let di = 0; di < nDays; di++) {
     const day = [];
     for (let si = 0; si < nSlots; si++) {
-      const label = data.slot_labels[si];
+      const label    = data.slot_labels[si];
       const statuses = order.map(n => {
         const raw = data.users[n]?.[di]?.[si] || 'grey';
-        return applyEventTypeFilter(n, di, si, raw, label, wDates);
+        return applyEventTypeFilter(n, di, raw, label, weekDays);
       });
       const booked = statuses.filter(s => s === 'red').length;
       const free   = statuses.filter(s => s === 'green').length;
       const total  = booked + free;
-      if (total === 0)      day.push({color:'grey',   label:'',               booked:0,      free:0});
-      else if (free === 0)  day.push({color:'red',    label:`${booked}/${total}`, booked, free:0});
-      else if (free === 1)  day.push({color:'orange', label:`${booked}/${total}`, booked, free:1});
-      else                  day.push({color:'green',  label:`${booked}/${total}`, booked, free});
+      if (total === 0)      day.push({color:'grey',   label:'',                    booked:0,      free:0});
+      else if (free === 0)  day.push({color:'red',    label:`${booked}/${total}`,  booked,        free:0});
+      else if (free === 1)  day.push({color:'orange', label:`${booked}/${total}`,  booked,        free:1});
+      else                  day.push({color:'green',  label:`${booked}/${total}`,  booked,        free});
     }
     grid.push(day);
   }
   return { grid, user_order: order };
-}
-
-// ── Today detection ────────────────────────────────────────────────────────
-const TODAY = new Date();
-
-function getTodayIdx(offset) {
-  const BASE = new Date(2026, 4, 11); // Mon May 11 2026
-  const mon  = new Date(BASE);
-  mon.setDate(mon.getDate() + offset * 7);
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(mon);
-    d.setDate(mon.getDate() + i);
-    if (d.toDateString() === TODAY.toDateString()) return i;
-  }
-  return -1;
-}
-
-function getWeekDayLabels(offset) {
-  const BASE = new Date(2026, 4, 11);
-  const result = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(BASE);
-    d.setDate(d.getDate() + offset * 7 + i);
-    result.push({ day: FR_DAYS[i], date: d.getDate() });
-  }
-  return result;
 }
 
 // ── API calls ──────────────────────────────────────────────────────────────
@@ -451,22 +442,49 @@ async function fetchNext7() {
   return next7Cache;
 }
 
-async function fetchEvents() {
-  if (eventsCache) return eventsCache;
-  const url = next7Mode ? '/api/events/next7' : `/api/events?offset=${weekOffset}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`API error ${r.status}`);
-  eventsCache = await r.json();
-  return eventsCache;
+async function fetchMembers() {
+  if (membersCache) return membersCache;
+  const r = await fetch('/api/members');
+  const data = await r.json();
+  if (!Array.isArray(data)) throw new Error(data.error || 'Erreur API membres');
+  membersCache = data;
+  return data;
 }
 
-function setEventTypeFilter(val) {
-  eventTypeFilter = val;
-  // Re-rendre la grille avec le nouveau filtre
-  const data = next7Mode ? next7Cache : weekCache[weekOffset];
-  if (data) renderGrid(data);
+// ── Charger les événements pour alimenter le filtre (fire & forget) ────────
+async function loadEventsForFilter() {
+  try {
+    const url = next7Mode ? '/api/events/next7' : `/api/events?offset=${weekOffset}`;
+    const r = await fetch(url);
+    if (!r.ok) return;
+    eventsCache = await r.json();
+
+    // Peupler le dropdown des types d'événements
+    const allTypes = new Set();
+    Object.values(eventsCache.events_by_member || {}).forEach(evts =>
+      evts.forEach(e => allTypes.add(e.name))
+    );
+    const sel = document.getElementById('evTypeSelect');
+    const prev = sel.value;
+    sel.innerHTML = '<option value="all">📋 Tous les événements</option>';
+    [...allTypes].sort().forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      sel.appendChild(o);
+    });
+    // Rétablir la sélection si le type existe toujours
+    sel.value = allTypes.has(prev) ? prev : 'all';
+    eventTypeFilter = sel.value;
+
+    // Re-render si un filtre est actif
+    if (eventTypeFilter !== 'all') {
+      const data = next7Mode ? next7Cache : weekCache[weekOffset];
+      if (data) renderGrid(data);
+    }
+  } catch(e) { /* silencieux */ }
 }
 
+// ── Charger l'activité (fire & forget depuis init) ─────────────────────────
 async function loadActivity() {
   try {
     const r = await fetch('/api/activity');
@@ -477,21 +495,13 @@ async function loadActivity() {
     activityStatus = activity;
     applyDropdownDots();
 
-    // Recharge silencieusement pour exclure les inactifs
+    // Refetch semaine pour exclure les inactifs côté serveur
     weekCache = {};
     next7Cache = null;
     const data = await fetchWeek(weekOffset);
     renderGrid(data);
+    loadEventsForFilter();
   } catch(e) { /* silencieux */ }
-}
-
-async function fetchMembers() {
-  if (membersCache) return membersCache;
-  const r = await fetch('/api/members');
-  const data = await r.json();
-  if (!Array.isArray(data)) throw new Error(data.error || 'Erreur API membres');
-  membersCache = data;
-  return data;
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -508,8 +518,8 @@ async function init() {
       sel.appendChild(opt);
     });
     await loadWeek(weekOffset);
-    loadActivity(); // asynchrone, met à jour les dots sans bloquer
-  } catch (e) {
+    loadActivity(); // asynchrone — met à jour les dots + refiltre les inactifs
+  } catch(e) {
     showError(e.message);
   } finally {
     setLoading(false);
@@ -517,110 +527,57 @@ async function init() {
 }
 
 async function loadWeek(offset) {
+  eventsCache = null; // purge les events de la semaine précédente
   setLoading(true);
   document.getElementById('weekLabel').textContent = 'Chargement…';
   try {
     const data = await fetchWeek(offset);
     renderGrid(data);
     setSyncTime();
-    loadEventsForFilter(); // fire & forget — peuple le dropdown type
-  } catch (e) {
+    loadEventsForFilter(); // fire & forget — peuple le dropdown
+  } catch(e) {
     showError(e.message);
   } finally {
     setLoading(false);
   }
 }
 
-async function loadEventsForFilter() {
-  try {
-    const url = next7Mode ? '/api/events/next7' : `/api/events?offset=${weekOffset}`;
-    const r = await fetch(url);
-    if (!r.ok) return;
-    eventsCache = await r.json();
-    // Peuple le dropdown des types
-    const allTypes = new Set();
-    Object.values(eventsCache.events_by_member || {}).forEach(evts =>
-      evts.forEach(e => allTypes.add(e.name))
-    );
-    const sel = document.getElementById('evTypeSelect');
-    const prev = sel.value;
-    sel.innerHTML = '<option value="all">📋 Tous les événements</option>';
-    [...allTypes].sort().forEach(t => {
-      const o = document.createElement('option');
-      o.value = t; o.textContent = t;
-      sel.appendChild(o);
-    });
-    sel.value = allTypes.has(prev) ? prev : 'all';
-    eventTypeFilter = sel.value;
-    // Rerender si filtre actif
-    if (eventTypeFilter !== 'all' && weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
-  } catch(e) { /* silencieux */ }
-}
-
-// Filtre un statut de slot selon le type d'événement sélectionné
-function applyEventTypeFilter(memberName, di, si, rawStatus, slotLabel, weekDays) {
-  if (eventTypeFilter === 'all' || !eventsCache) return rawStatus;
-  if (rawStatus === 'grey') return 'grey';
-  const date = weekDays ? weekDays[di] : (eventsCache.week_days || [])[di];
-  if (!date) return rawStatus;
-  const [slotH, slotM] = slotLabel.split(':').map(Number);
-  const slotStart = slotH * 60 + slotM;
-  const slotEnd   = slotStart + 30;
-  const events = (eventsCache.events_by_member[memberName] || [])
-    .filter(e => e.date === date && e.name === eventTypeFilter);
-  for (const e of events) {
-    const [eH, eM] = e.start.split(':').map(Number);
-    const [fH, fM] = e.end.split(':').map(Number);
-    if ((eH * 60 + eM) < slotEnd && (fH * 60 + fM) > slotStart) return 'red';
-  }
-  return 'green'; // en heure de travail mais pas ce type → dispo
-}
-
 // ── Render ─────────────────────────────────────────────────────────────────
-function getNext7DayLabels() {
-  const today = new Date();
-  return Array.from({length: 7}, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return { day: FR_DAYS[d.getDay() === 0 ? 6 : d.getDay() - 1], date: d.getDate() };
-  });
-}
-
 function renderGrid(data) {
   const grid       = document.getElementById('calGrid');
   const isRdvCount = currentTab === 'rdv_count';
   const isGeneral  = currentView === 'general';
 
-  // Recompute general grid if members are excluded OR event type filter active
+  // Recomputer la grille générale si nécessaire (exclusions ou filtre event)
   const needsRecompute = isGeneral && (excludedMembers.size > 0 || eventTypeFilter !== 'all');
-  let effectiveGeneral  = data.general;
-  let effectiveOrder    = data.user_order;
+  let effectiveGeneral = data.general;
+  let effectiveOrder   = data.user_order;
   if (needsRecompute) {
     const r = recomputeGeneralGrid(data);
     effectiveGeneral = r.grid;
     effectiveOrder   = r.user_order;
   }
-  const gridData = isGeneral ? effectiveGeneral : data.users[currentView];
-  const weekDays  = next7Mode ? getNext7DayLabels() : getWeekDayLabels(weekOffset);
-  const todayIdx  = next7Mode ? 0 : getTodayIdx(weekOffset);
+
+  const gridData  = isGeneral ? effectiveGeneral : data.users[currentView];
+  const weekDays  = data.week_days || [];
+  const dayLabels = getWeekDayLabels(weekDays);
+  const todayIdx  = getTodayIdx(weekDays);
 
   document.getElementById('weekLabel').textContent = data.week_label;
   grid.innerHTML = '';
 
-  // Corner
-  const corner = document.createElement('div');
-  corner.className = 'cal-header';
-  grid.appendChild(corner);
+  // Coin vide
+  grid.appendChild(Object.assign(document.createElement('div'), { className: 'cal-header' }));
 
-  // Day headers
-  weekDays.forEach((d, i) => {
+  // En-têtes jours
+  dayLabels.forEach((d, i) => {
     const h = document.createElement('div');
     h.className = 'cal-header' + (i === todayIdx ? ' today' : '');
     h.innerHTML = `${d.day}<div class="day-num">${d.date}</div>`;
     grid.appendChild(h);
   });
 
-  // Slots
+  // Lignes de slots
   data.slot_labels.forEach((label, si) => {
     const tl = document.createElement('div');
     tl.className = 'time-label';
@@ -634,27 +591,29 @@ function renderGrid(data) {
       if (!gridData) {
         cell.classList.add('slot-grey');
       } else if (isRdvCount) {
+        // ── Vue Compteur RDV ──
         if (isGeneral) {
           const slot = gridData[di][si];
           if (slot.color === 'grey') {
             cell.classList.add('slot-grey');
           } else {
             const n = slot.booked;
-            const heatClass = n === 0 ? 'slot-heat-0' : n === 1 ? 'slot-heat-1' : n === 2 ? 'slot-heat-2' : n === 3 ? 'slot-heat-3' : 'slot-heat-4';
-            cell.classList.add(heatClass);
-            cell.textContent = n > 0 ? n : '';
+            const hClass = n === 0 ? 'slot-heat-0' : n === 1 ? 'slot-heat-1' : n === 2 ? 'slot-heat-2' : n === 3 ? 'slot-heat-3' : 'slot-heat-4';
+            cell.classList.add(hClass);
             if (n > 0) {
-              const names = data.user_order.filter(nm => data.users[nm]?.[di]?.[si] === 'red');
+              cell.textContent = n;
+              const names = effectiveOrder.filter(nm => data.users[nm]?.[di]?.[si] === 'red');
               if (names.length) cell.dataset.tip = '🔴 RDV:\n' + names.join('\n');
             }
           }
         } else {
           const status = gridData[di][si];
-          if (status === 'grey')       { cell.classList.add('slot-grey'); }
-          else if (status === 'red')   { cell.classList.add('slot-heat-2'); cell.textContent = '1'; }
-          else                         { cell.classList.add('slot-heat-0'); }
+          if (status === 'grey')     { cell.classList.add('slot-grey'); }
+          else if (status === 'red') { cell.classList.add('slot-heat-2'); cell.textContent = '1'; }
+          else                       { cell.classList.add('slot-heat-0'); }
         }
       } else if (isGeneral) {
+        // ── Vue Générale ──
         const slot = gridData[di][si];
         if      (slot.color === 'green')  { cell.classList.add('slot-green');  cell.textContent = slot.label; }
         else if (slot.color === 'orange') { cell.classList.add('slot-orange'); cell.textContent = slot.label; }
@@ -671,8 +630,9 @@ function renderGrid(data) {
           if (tip) cell.dataset.tip = tip;
         }
       } else {
+        // ── Vue individuelle ──
         const raw    = gridData[di][si];
-        const status = applyEventTypeFilter(currentView, di, si, raw, label, eventsCache?.week_days || null);
+        const status = applyEventTypeFilter(currentView, di, raw, label, weekDays);
         if      (status === 'green') { cell.classList.add('slot-green'); cell.textContent = '✓'; }
         else if (status === 'red')   { cell.classList.add('slot-red');   cell.textContent = 'RDV'; }
         else                         { cell.classList.add('slot-grey'); }
@@ -682,17 +642,20 @@ function renderGrid(data) {
     }
   });
 
-  updateStats(isGeneral, isRdvCount, gridData, data);
+  updateStats(isGeneral, isRdvCount, gridData, data, effectiveOrder);
 }
 
-function updateStats(isGeneral, isRdvCount, gridData, data) {
+function updateStats(isGeneral, isRdvCount, gridData, data, effectiveOrder) {
   const statsRow = document.getElementById('statsRow');
 
   if (isRdvCount && gridData) {
     if (isGeneral) {
       let totalRdv = 0, maxSlot = 0;
       gridData.forEach(day => day.forEach(slot => {
-        if (slot.color !== 'grey') { totalRdv += slot.booked; if (slot.booked > maxSlot) maxSlot = slot.booked; }
+        if (slot.color !== 'grey') {
+          totalRdv += slot.booked;
+          if (slot.booked > maxSlot) maxSlot = slot.booked;
+        }
       }));
       statsRow.style.display = 'flex';
       statsRow.innerHTML = `
@@ -709,17 +672,17 @@ function updateStats(isGeneral, isRdvCount, gridData, data) {
   }
 
   if (isGeneral && gridData) {
-    let totalGreen = 0, totalRed = 0, totalSlots = 0;
+    let totalGreen = 0, totalRed = 0;
     gridData.forEach(day => day.forEach(slot => {
       if (slot.color !== 'grey') {
-        totalSlots++;
         if (slot.color === 'red') totalRed++; else totalGreen++;
       }
     }));
+    const totalSlots = totalGreen + totalRed;
     const rate = totalSlots > 0 ? Math.round(totalRed / totalSlots * 100) : 0;
     statsRow.style.display = 'flex';
     statsRow.innerHTML = `
-      <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${data.user_order.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${(effectiveOrder || data.user_order).length}</div></div>
       <div class="stat-card"><div class="stat-label">Slots libres</div><div class="stat-value green">${totalGreen}</div></div>
       <div class="stat-card"><div class="stat-label">RDV posés</div><div class="stat-value red">${totalRed}</div></div>
       <div class="stat-card"><div class="stat-label">Taux remplissage</div><div class="stat-value ${rate > 70 ? 'red' : rate > 40 ? 'orange' : 'green'}">${rate}%</div></div>`;
@@ -734,41 +697,37 @@ function updateStats(isGeneral, isRdvCount, gridData, data) {
   }
 }
 
-// ── Controls ───────────────────────────────────────────────────────────────
+// ── Diagnostic ─────────────────────────────────────────────────────────────
 async function loadDiagnostic() {
   const area = document.getElementById('printArea');
   area.innerHTML = '<div class="diag-loading">⏳ Analyse en cours… (10-20 secondes)</div>';
   try {
     const r = await fetch('/api/diagnostic');
     if (!r.ok) throw new Error(`API error ${r.status}`);
-    const data = await r.json();
-    renderDiagnostic(data);
+    renderDiagnostic(await r.json());
   } catch(e) {
     area.innerHTML = `<div class="diag-loading" style="color:#dc2626">⚠ Erreur : ${e.message}</div>`;
   }
 }
 
 function renderDiagnostic(data) {
-  const area = document.getElementById('printArea');
+  const chk  = v => v ? '<span class="diag-check">✓</span>' : '<span class="diag-cross">✗</span>';
   const rows = data.map(m => {
     const badge = m.score === 4 ? '<span class="badge-active">Actif</span>'
                 : m.score >= 2  ? '<span class="badge-partial">Partiel</span>'
                 :                 '<span class="badge-inactive">Inactif</span>';
-    const chk  = v => v ? '<span class="diag-check">✓</span>' : '<span class="diag-cross">✗</span>';
-    const rdvP = m.rdv_past_30  != null ? m.rdv_past_30  : '—';
-    const rdvF = m.rdv_next_30  != null ? m.rdv_next_30  : '—';
-    const et   = m.event_types && m.event_types.length ? m.event_types.join(', ') : '<span style="color:#94a3b8">Aucun</span>';
+    const et = m.event_types?.length ? m.event_types.join(', ') : '<span style="color:#94a3b8">Aucun</span>';
     return `<tr>
       <td><strong>${m.name}</strong><br><span style="color:#94a3b8;font-size:11px">${m.email}</span></td>
       <td>${badge}</td>
       <td>${chk(m.has_hours)} ${m.active_days}j/7</td>
       <td>${chk(m.has_event_types)} <span style="color:#64748b;font-size:11px">${et}</span></td>
-      <td style="text-align:center">${rdvP}</td>
-      <td style="text-align:center">${rdvF}</td>
+      <td style="text-align:center">${m.rdv_past_30 ?? '—'}</td>
+      <td style="text-align:center">${m.rdv_next_30 ?? '—'}</td>
     </tr>`;
   }).join('');
 
-  area.innerHTML = `
+  document.getElementById('printArea').innerHTML = `
     <div class="view-title" style="margin-bottom:12px">
       <span>Diagnostic — Activité des comptes Calendly</span>
       <span class="view-badge badge-global">Diagnostic</span>
@@ -782,6 +741,7 @@ function renderDiagnostic(data) {
     </table>`;
 }
 
+// ── Legend & title ──────────────────────────────────────────────────────────
 function updateLegendAndTitle() {
   const isRdv     = currentTab === 'rdv_count';
   const isGeneral = currentView === 'general';
@@ -789,44 +749,58 @@ function updateLegendAndTitle() {
   document.querySelectorAll('.legend-ind').forEach(el => el.style.display = (!isRdv && !isGeneral) ? 'flex' : 'none');
   document.querySelectorAll('.legend-rdv').forEach(el => el.style.display = isRdv                  ? 'flex' : 'none');
   const titleSuffix = isGeneral ? 'Tous les closers' : currentView;
-  const tabLabel    = isRdv ? 'Compteur RDV' : (isGeneral ? 'Vue Générale' : 'Vue Individuelle');
-  document.getElementById('legendTitle').textContent = tabLabel;
+  document.getElementById('legendTitle').textContent = isRdv ? 'Compteur RDV' : (isGeneral ? 'Vue Générale' : 'Vue Individuelle');
   document.getElementById('viewTitle').textContent   = isRdv ? `Compteur RDV — ${titleSuffix}` : (isGeneral ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${currentView}`);
   document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : 'Closer';
   document.getElementById('viewBadge').className     = 'view-badge ' + (isGeneral ? 'badge-global' : 'badge-closer');
 }
 
+// ── Tab / View controls ────────────────────────────────────────────────────
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
-
   document.getElementById('closerStats').textContent = '';
 
   const isDiag = tab === 'diagnostic';
-  document.getElementById('viewSelect').style.display = isDiag ? 'none' : '';
-  document.getElementById('btnNext7').style.display   = isDiag ? 'none' : '';
-  document.querySelector('.week-nav').style.display   = isDiag ? 'none' : '';
-  document.getElementById('legendTitle').textContent  = isDiag ? 'Diagnostic' : '';
+  document.getElementById('viewSelect').style.display  = isDiag ? 'none' : '';
+  document.getElementById('evTypeSelect').style.display = isDiag ? 'none' : '';
+  document.getElementById('btnNext7').style.display    = isDiag ? 'none' : '';
+  document.querySelector('.week-nav').style.display    = isDiag ? 'none' : '';
   document.querySelectorAll('.legend-gen,.legend-ind,.legend-rdv').forEach(el => el.style.display = 'none');
+  document.getElementById('legendTitle').textContent   = isDiag ? 'Diagnostic' : '';
 
   if (isDiag) {
+    // Remplace le contenu printArea par le diagnostic
+    document.getElementById('printArea').innerHTML = '<div class="diag-loading">⏳ Chargement…</div>';
     loadDiagnostic();
     return;
+  }
+
+  // Restaurer le printArea (stats + grid)
+  if (!document.getElementById('calGrid')) {
+    document.getElementById('printArea').innerHTML = `
+      <div class="stats-row" id="statsRow"></div>
+      <div class="view-title">
+        <span id="viewTitle"></span>
+        <span class="view-badge badge-global" id="viewBadge">Global</span>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>`;
   }
 
   document.querySelector('.week-nav').style.opacity       = next7Mode ? '0.35' : '';
   document.querySelector('.week-nav').style.pointerEvents = next7Mode ? 'none' : '';
   updateLegendAndTitle();
-  if (next7Mode) { if (next7Cache) renderGrid(next7Cache); }
-  else if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
+  const data = next7Mode ? next7Cache : weekCache[weekOffset];
+  if (data) renderGrid(data);
 }
 
 function switchView(val) {
   currentView = val;
   document.getElementById('closerStats').textContent = '';
   updateLegendAndTitle();
-  if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
+  const data = next7Mode ? next7Cache : weekCache[weekOffset];
+  if (data) renderGrid(data);
 }
 
 function prevWeek() { if (!loading && !next7Mode) { weekOffset--; loadWeek(weekOffset); } }
@@ -848,17 +822,22 @@ async function toggleNext7() {
       const data = await fetchNext7();
       renderGrid(data);
       setSyncTime();
+      loadEventsForFilter();
     } catch(e) { showError(e.message); }
     finally { setLoading(false); }
   } else {
-    eventsCache = null;
     btn.style.background = '#4f46e5';
     btn.style.borderColor = '#4f46e5';
     btn.textContent = '🗓 7 prochains jours';
     nav.style.opacity = '';
     nav.style.pointerEvents = '';
-    if (weekCache[weekOffset]) renderGrid(weekCache[weekOffset]);
-    else loadWeek(weekOffset);
+    if (weekCache[weekOffset]) {
+      eventsCache = null;
+      renderGrid(weekCache[weekOffset]);
+      loadEventsForFilter();
+    } else {
+      loadWeek(weekOffset);
+    }
   }
 }
 
@@ -868,14 +847,24 @@ async function hardRefresh() {
   eventsCache  = null;
   membersCache = null;
   await fetch('/api/refresh', { method: 'POST' });
+  // Restaurer le printArea si on était en diagnostic
+  document.getElementById('printArea').innerHTML = `
+    <div class="stats-row" id="statsRow"></div>
+    <div class="view-title">
+      <span id="viewTitle">Vue Générale — Tous les closers</span>
+      <span class="view-badge badge-global" id="viewBadge">Global</span>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>`;
+  currentTab = 'calendar';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-calendar').classList.add('active');
   await init();
 }
 
 // ── UI helpers ─────────────────────────────────────────────────────────────
 function setLoading(on) {
   loading = on;
-  const dot = document.getElementById('syncDot');
-  dot.className = 'sync-dot' + (on ? ' loading' : '');
+  document.getElementById('syncDot').className = 'sync-dot' + (on ? ' loading' : '');
   document.getElementById('btnRefresh').disabled = on;
 }
 
@@ -886,10 +875,10 @@ function setSyncTime() {
 
 function showError(msg) {
   document.getElementById('weekLabel').textContent = '⚠ Erreur';
-  document.getElementById('syncTime').textContent = msg;
+  document.getElementById('syncTime').textContent  = msg;
 }
 
-// Auto-refresh every 60 min
+// Auto-refresh toutes les 60 min
 setInterval(hardRefresh, 60 * 60 * 1000);
 
 init();

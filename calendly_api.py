@@ -226,6 +226,7 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
 
     result = {
         "week_label":  label,
+        "week_days":   [d.strftime("%Y-%m-%d") for d in week_days],
         "day_labels":  day_labels,
         "slot_labels": slot_labels,
         "user_order":  user_order,
