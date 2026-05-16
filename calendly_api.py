@@ -321,6 +321,34 @@ def get_next7_data() -> dict:
     return _build_period_data(today, label, f"next7_{today.strftime('%Y-%m-%d')}")
 
 
+# ── Noms de tous les event types configurés (pas juste ceux avec des RDV) ────
+def get_all_event_type_names() -> list:
+    ckey = "event_type_names"
+    cached = cache_get(ckey)
+    if cached:
+        return cached
+
+    all_members = get_members()
+    activity    = cache_get(f"activity_{datetime.utcnow().strftime('%Y-%m-%d')}") or {}
+    members     = [m for m in all_members if activity.get(m["name"], {}).get("active", True)]
+    if not members:
+        members = all_members
+
+    names = set()
+    for m in members:
+        try:
+            et = api_get(f"{CALENDLY_BASE}/event_types", {"user": m["uri"], "active": "true", "count": 100})
+            for e in et.get("collection", []):
+                n = e.get("name", "").strip()
+                if n:
+                    names.add(n)
+        except Exception:
+            pass
+
+    result = sorted(names)
+    cache_set(ckey, result, ttl=3600)   # 1h — les event types changent rarement
+    return result
+
 # ── Événements planifiés ──────────────────────────────────────────────────────
 def get_scheduled_events(user_uri, start_utc, end_utc):
     try:

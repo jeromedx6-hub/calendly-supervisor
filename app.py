@@ -79,6 +79,13 @@ def events_next7():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/event_type_names")
+def event_type_names():
+    try:
+        return jsonify(calendly_api.get_all_event_type_names())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/members")
 def members():
     try:

@@ -118,12 +118,6 @@
   .slot-green  { background: #dcfce7; color: #15803d; }
   .slot-orange { background: #ffedd5; color: #c2410c; }
   .slot-red    { background: #fee2e2; color: #b91c1c; }
-  .slot-heat-0 { background: #f0fdf4; color: #166534; }
-  .slot-heat-1 { background: #fff7ed; color: #9a3412; }
-  .slot-heat-2 { background: #fee2e2; color: #b91c1c; }
-  .slot-heat-3 { background: #fca5a5; color: #7f1d1d; font-size: 12px; }
-  .slot-heat-4 { background: #ef4444; color: #fff;    font-size: 12px; }
-
   /* Tooltip */
   .slot[data-tip] { cursor: pointer; }
   .slot[data-tip]:hover::after {
@@ -231,7 +225,6 @@
 <!-- ── Tab bar ───────────────────────────────────────────────────────── -->
 <div class="tab-bar">
   <button class="tab-btn active" id="tab-calendar"   onclick="switchTab('calendar')">📊 Calendrier</button>
-  <button class="tab-btn"        id="tab-rdv_count"  onclick="switchTab('rdv_count')">📈 Compteur RDV</button>
   <button class="tab-btn"        id="tab-diagnostic" onclick="switchTab('diagnostic')">🔍 Diagnostic</button>
 </div>
 
@@ -246,11 +239,6 @@
   <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#dcfce7;border:1.5px solid #86efac"></div>Disponible</div>
   <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>RDV posé</div>
   <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Indisponible</div>
-  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#f0fdf4;border:1.5px solid #86efac"></div>0 RDV</div>
-  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#fff7ed;border:1.5px solid #fdba74"></div>1 RDV</div>
-  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>2 RDV</div>
-  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#ef4444;border:1.5px solid #dc2626"></div>4+ RDV</div>
-  <div class="legend-item legend-rdv" style="display:none"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Hors horaires</div>
   <span class="closer-stats" id="closerStats"></span>
 </div>
 
@@ -451,31 +439,37 @@ async function fetchMembers() {
   return data;
 }
 
-// ── Charger les événements pour alimenter le filtre (fire & forget) ────────
+// ── Charger les noms d'event types depuis l'API (une fois au démarrage) ───
+async function loadEventTypeNames() {
+  try {
+    const r = await fetch('/api/event_type_names');
+    if (!r.ok) return;
+    const names = await r.json();
+    if (!Array.isArray(names)) return;
+    const sel = document.getElementById('evTypeSelect');
+    const prev = sel.value;
+    sel.innerHTML = '<option value="all">📋 Tous les événements</option>';
+    names.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      sel.appendChild(o);
+    });
+    sel.value = names.includes(prev) ? prev : 'all';
+    eventTypeFilter = sel.value;
+    if (eventTypeFilter !== 'all') {
+      const data = next7Mode ? next7Cache : weekCache[weekOffset];
+      if (data) renderGrid(data);
+    }
+  } catch(e) { /* silencieux */ }
+}
+
+// ── Charger les événements planifiés (pour la logique de filtre) ───────────
 async function loadEventsForFilter() {
   try {
     const url = next7Mode ? '/api/events/next7' : `/api/events?offset=${weekOffset}`;
     const r = await fetch(url);
     if (!r.ok) return;
     eventsCache = await r.json();
-
-    // Peupler le dropdown des types d'événements
-    const allTypes = new Set();
-    Object.values(eventsCache.events_by_member || {}).forEach(evts =>
-      evts.forEach(e => allTypes.add(e.name))
-    );
-    const sel = document.getElementById('evTypeSelect');
-    const prev = sel.value;
-    sel.innerHTML = '<option value="all">📋 Tous les événements</option>';
-    [...allTypes].sort().forEach(t => {
-      const o = document.createElement('option');
-      o.value = t; o.textContent = t;
-      sel.appendChild(o);
-    });
-    // Rétablir la sélection si le type existe toujours
-    sel.value = allTypes.has(prev) ? prev : 'all';
-    eventTypeFilter = sel.value;
-
     // Re-render si un filtre est actif
     if (eventTypeFilter !== 'all') {
       const data = next7Mode ? next7Cache : weekCache[weekOffset];
@@ -518,7 +512,8 @@ async function init() {
       sel.appendChild(opt);
     });
     await loadWeek(weekOffset);
-    loadActivity(); // asynchrone — met à jour les dots + refiltre les inactifs
+    loadActivity();        // asynchrone — met à jour les dots + refiltre les inactifs
+    loadEventTypeNames();  // asynchrone — peuple le dropdown event types
   } catch(e) {
     showError(e.message);
   } finally {
@@ -544,9 +539,8 @@ async function loadWeek(offset) {
 
 // ── Render ─────────────────────────────────────────────────────────────────
 function renderGrid(data) {
-  const grid       = document.getElementById('calGrid');
-  const isRdvCount = currentTab === 'rdv_count';
-  const isGeneral  = currentView === 'general';
+  const grid      = document.getElementById('calGrid');
+  const isGeneral = currentView === 'general';
 
   // Recomputer la grille générale si nécessaire (exclusions ou filtre event)
   const needsRecompute = isGeneral && (excludedMembers.size > 0 || eventTypeFilter !== 'all');
@@ -590,28 +584,6 @@ function renderGrid(data) {
 
       if (!gridData) {
         cell.classList.add('slot-grey');
-      } else if (isRdvCount) {
-        // ── Vue Compteur RDV ──
-        if (isGeneral) {
-          const slot = gridData[di][si];
-          if (slot.color === 'grey') {
-            cell.classList.add('slot-grey');
-          } else {
-            const n = slot.booked;
-            const hClass = n === 0 ? 'slot-heat-0' : n === 1 ? 'slot-heat-1' : n === 2 ? 'slot-heat-2' : n === 3 ? 'slot-heat-3' : 'slot-heat-4';
-            cell.classList.add(hClass);
-            if (n > 0) {
-              cell.textContent = n;
-              const names = effectiveOrder.filter(nm => data.users[nm]?.[di]?.[si] === 'red');
-              if (names.length) cell.dataset.tip = '🔴 RDV:\n' + names.join('\n');
-            }
-          }
-        } else {
-          const status = gridData[di][si];
-          if (status === 'grey')     { cell.classList.add('slot-grey'); }
-          else if (status === 'red') { cell.classList.add('slot-heat-2'); cell.textContent = '1'; }
-          else                       { cell.classList.add('slot-heat-0'); }
-        }
       } else if (isGeneral) {
         // ── Vue Générale ──
         const slot = gridData[di][si];
@@ -642,34 +614,11 @@ function renderGrid(data) {
     }
   });
 
-  updateStats(isGeneral, isRdvCount, gridData, data, effectiveOrder);
+  updateStats(isGeneral, gridData, data, effectiveOrder);
 }
 
-function updateStats(isGeneral, isRdvCount, gridData, data, effectiveOrder) {
+function updateStats(isGeneral, gridData, data, effectiveOrder) {
   const statsRow = document.getElementById('statsRow');
-
-  if (isRdvCount && gridData) {
-    if (isGeneral) {
-      let totalRdv = 0, maxSlot = 0;
-      gridData.forEach(day => day.forEach(slot => {
-        if (slot.color !== 'grey') {
-          totalRdv += slot.booked;
-          if (slot.booked > maxSlot) maxSlot = slot.booked;
-        }
-      }));
-      statsRow.style.display = 'flex';
-      statsRow.innerHTML = `
-        <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${data.user_order.length}</div></div>
-        <div class="stat-card"><div class="stat-label">Total RDV semaine</div><div class="stat-value red">${totalRdv}</div></div>
-        <div class="stat-card"><div class="stat-label">Max RDV / créneau</div><div class="stat-value ${maxSlot >= 3 ? 'red' : maxSlot >= 2 ? 'orange' : 'green'}">${maxSlot}</div></div>`;
-    } else {
-      let rdv = 0;
-      gridData.forEach(day => day.forEach(s => { if (s === 'red') rdv++; }));
-      statsRow.style.display = 'none';
-      document.getElementById('closerStats').textContent = `${rdv} RDV posés cette semaine`;
-    }
-    return;
-  }
 
   if (isGeneral && gridData) {
     let totalGreen = 0, totalRed = 0;
@@ -743,14 +692,11 @@ function renderDiagnostic(data) {
 
 // ── Legend & title ──────────────────────────────────────────────────────────
 function updateLegendAndTitle() {
-  const isRdv     = currentTab === 'rdv_count';
   const isGeneral = currentView === 'general';
-  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = (!isRdv && isGeneral)  ? 'flex' : 'none');
-  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = (!isRdv && !isGeneral) ? 'flex' : 'none');
-  document.querySelectorAll('.legend-rdv').forEach(el => el.style.display = isRdv                  ? 'flex' : 'none');
-  const titleSuffix = isGeneral ? 'Tous les closers' : currentView;
-  document.getElementById('legendTitle').textContent = isRdv ? 'Compteur RDV' : (isGeneral ? 'Vue Générale' : 'Vue Individuelle');
-  document.getElementById('viewTitle').textContent   = isRdv ? `Compteur RDV — ${titleSuffix}` : (isGeneral ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${currentView}`);
+  document.querySelectorAll('.legend-gen').forEach(el => el.style.display = isGeneral  ? 'flex' : 'none');
+  document.querySelectorAll('.legend-ind').forEach(el => el.style.display = !isGeneral ? 'flex' : 'none');
+  document.getElementById('legendTitle').textContent = isGeneral ? 'Vue Générale' : 'Vue Individuelle';
+  document.getElementById('viewTitle').textContent   = isGeneral ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${currentView}`;
   document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : 'Closer';
   document.getElementById('viewBadge').className     = 'view-badge ' + (isGeneral ? 'badge-global' : 'badge-closer');
 }
@@ -763,15 +709,14 @@ function switchTab(tab) {
   document.getElementById('closerStats').textContent = '';
 
   const isDiag = tab === 'diagnostic';
-  document.getElementById('viewSelect').style.display  = isDiag ? 'none' : '';
+  document.getElementById('viewSelect').style.display   = isDiag ? 'none' : '';
   document.getElementById('evTypeSelect').style.display = isDiag ? 'none' : '';
-  document.getElementById('btnNext7').style.display    = isDiag ? 'none' : '';
-  document.querySelector('.week-nav').style.display    = isDiag ? 'none' : '';
-  document.querySelectorAll('.legend-gen,.legend-ind,.legend-rdv').forEach(el => el.style.display = 'none');
-  document.getElementById('legendTitle').textContent   = isDiag ? 'Diagnostic' : '';
+  document.getElementById('btnNext7').style.display     = isDiag ? 'none' : '';
+  document.querySelector('.week-nav').style.display     = isDiag ? 'none' : '';
+  document.querySelectorAll('.legend-gen,.legend-ind').forEach(el => el.style.display = 'none');
+  document.getElementById('legendTitle').textContent    = isDiag ? 'Diagnostic' : '';
 
   if (isDiag) {
-    // Remplace le contenu printArea par le diagnostic
     document.getElementById('printArea').innerHTML = '<div class="diag-loading">⏳ Chargement…</div>';
     loadDiagnostic();
     return;
@@ -846,8 +791,11 @@ async function hardRefresh() {
   next7Cache   = null;
   eventsCache  = null;
   membersCache = null;
+  currentView  = 'general';
+  currentTab   = 'calendar';
+  eventTypeFilter = 'all';
   await fetch('/api/refresh', { method: 'POST' });
-  // Restaurer le printArea si on était en diagnostic
+  // Restaurer le printArea
   document.getElementById('printArea').innerHTML = `
     <div class="stats-row" id="statsRow"></div>
     <div class="view-title">
@@ -855,9 +803,9 @@ async function hardRefresh() {
       <span class="view-badge badge-global" id="viewBadge">Global</span>
     </div>
     <div class="cal-grid" id="calGrid"></div>`;
-  currentTab = 'calendar';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-calendar').classList.add('active');
+  document.getElementById('evTypeSelect').innerHTML = '<option value="all">📋 Tous les événements</option>';
   await init();
 }
 
