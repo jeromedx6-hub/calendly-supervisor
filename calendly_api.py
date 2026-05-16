@@ -372,10 +372,32 @@ def get_scheduled_events(user_uri, start_utc, end_utc):
                 "end":      f.strftime("%H:%M"),
                 "date":     s.strftime("%Y-%m-%d"),
                 "duration": int((f - s).total_seconds() / 60),
+                "uri":      e.get("uri", ""),
             })
         except Exception:
             pass
     return sorted(events, key=lambda x: x["start"])
+
+
+def get_event_invitees(event_uri: str) -> list:
+    """Retourne les noms des participants (leads) pour un événement donné."""
+    if not event_uri:
+        return []
+    uuid = event_uri.rstrip("/").split("/")[-1]
+    ckey = f"invitees_{uuid}"
+    cached = cache_get(ckey)
+    if cached is not None:
+        return cached
+    try:
+        data = api_get(f"{CALENDLY_BASE}/scheduled_events/{uuid}/invitees", {"count": 10})
+        invitees = [
+            {"name": inv.get("name", ""), "email": inv.get("email", "")}
+            for inv in data.get("collection", [])
+        ]
+    except Exception:
+        invitees = []
+    cache_set(ckey, invitees, ttl=1800)
+    return invitees
 
 
 def get_events_week_data(week_offset: int) -> dict:

@@ -179,6 +179,38 @@
   .toggle-btn.excluded { background:#fee2e2;border-color:#fca5a5;color:#991b1b; }
   .toggle-btn.excluded:hover { background:#dcfce7;border-color:#86efac;color:#166534; }
 
+  /* ── Slot popup ── */
+  .slot-popup-overlay {
+    position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;display:none;
+  }
+  .slot-popup-overlay.open { display:block; }
+  .slot-popup {
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:#fff;border-radius:12px;z-index:301;
+    min-width:320px;max-width:500px;width:90%;
+    box-shadow:0 20px 60px rgba(0,0,0,0.35);overflow:hidden;
+    display:none;
+  }
+  .slot-popup.open { display:block; }
+  .slot-popup-hdr {
+    background:#0f172a;padding:14px 20px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .slot-popup-hdr-title { color:#fff;font-size:13px;font-weight:700; }
+  .slot-popup-hdr-close { background:transparent;border:none;color:#64748b;font-size:22px;cursor:pointer;line-height:1;padding:0; }
+  .slot-popup-hdr-close:hover { color:#fff; }
+  .slot-popup-body { padding:16px 20px;max-height:420px;overflow-y:auto; }
+  .slot-popup-rdv {
+    margin-bottom:12px;padding:12px 14px;
+    background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;
+  }
+  .slot-popup-rdv:last-child { margin-bottom:0; }
+  .slot-popup-closer { font-weight:700;color:#0f172a;font-size:13px;margin-bottom:5px; }
+  .slot-popup-lead { color:#1e293b;font-size:13px;margin-bottom:3px; }
+  .slot-popup-lead strong { color:#16a34a; }
+  .slot-popup-meta { color:#94a3b8;font-size:11px;margin-top:4px; }
+  .slot-popup-loading { text-align:center;padding:24px;color:#94a3b8;font-size:12px; }
+
   /* Settings tab bar */
   .settings-tab-bar { display:flex;border-bottom:1px solid #1e293b;flex-shrink:0;background:#0f172a; }
   .stab { flex:1;padding:10px;font-size:11px;font-weight:600;cursor:pointer;border:none;
@@ -284,6 +316,16 @@
   </div>
 </div>
 
+<!-- ── Slot popup ─────────────────────────────────────────────────────── -->
+<div class="slot-popup-overlay" id="slotPopupOverlay" onclick="closeSlotPopup()"></div>
+<div class="slot-popup" id="slotPopup">
+  <div class="slot-popup-hdr">
+    <span class="slot-popup-hdr-title" id="slotPopupTitle"></span>
+    <button class="slot-popup-hdr-close" onclick="closeSlotPopup()">×</button>
+  </div>
+  <div class="slot-popup-body" id="slotPopupBody"></div>
+</div>
+
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────
 const FR_DAYS   = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
@@ -305,6 +347,7 @@ let loading         = false;
 
 let excludedMembers     = new Set(JSON.parse(localStorage.getItem('calendly_excluded') || '[]'));
 let excludedEventTypes  = new Set(JSON.parse(localStorage.getItem('calendly_excluded_event_types') || '[]'));
+let memberDisplayNames  = JSON.parse(localStorage.getItem('calendly_display_names') || '{}');
 let allEventTypeNames   = []; // noms complets chargés depuis /api/event_type_names
 
 // ── Settings / Exclusions ──────────────────────────────────────────────────
@@ -319,12 +362,25 @@ function getDotForMember(name) {
   return s.active ? '🟢' : '🔴';
 }
 
+// Prénom affiché (ou nom complet si pas défini)
+function getDisplayName(name) {
+  return memberDisplayNames[name] || name;
+}
+
+function setMemberDisplayName(name, value) {
+  const v = value.trim();
+  if (v) memberDisplayNames[name] = v;
+  else   delete memberDisplayNames[name];
+  localStorage.setItem('calendly_display_names', JSON.stringify(memberDisplayNames));
+  applyDropdownDots();
+}
+
 function applyDropdownDots() {
   const sel = document.getElementById('viewSelect');
   for (let i = 1; i < sel.options.length; i++) {
-    const opt = sel.options[i];
+    const opt  = sel.options[i];
     const name = opt.value;
-    opt.textContent = getDotForMember(name) + ' ' + name;
+    opt.textContent = getDotForMember(name) + ' ' + getDisplayName(name);
   }
 }
 
@@ -332,14 +388,23 @@ function renderSettingsList() {
   const list = document.getElementById('settingsMemberList');
   if (!membersCache) { list.innerHTML = '<p style="color:#94a3b8;font-size:12px">Chargement…</p>'; return; }
   list.innerHTML = membersCache.map(m => {
-    const excl = excludedMembers.has(m.name);
-    const dot  = getDotForMember(m.name);
-    const cls  = excl ? 'excluded' : 'included';
-    const lbl  = excl ? '🚫 Exclu' : '✓ Inclus';
-    const safe = m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return `<div class="member-row">
-      <div class="member-info"><span>${dot}</span><span>${m.name}</span></div>
-      <button class="toggle-btn ${cls}" onclick="toggleExclusion('${safe}')">${lbl}</button>
+    const excl    = excludedMembers.has(m.name);
+    const dot     = getDotForMember(m.name);
+    const cls     = excl ? 'excluded' : 'included';
+    const lbl     = excl ? '🚫 Exclu' : '✓ Inclus';
+    const safe    = m.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const dispVal = (memberDisplayNames[m.name] || '').replace(/"/g,'&quot;');
+    return `<div class="member-row" style="flex-direction:column;align-items:stretch;gap:6px;padding:10px 0">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="member-info"><span>${dot}</span><span style="font-size:11px;color:#64748b">${m.name}</span></div>
+        <button class="toggle-btn ${cls}" onclick="toggleExclusion('${safe}')">${lbl}</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding-left:22px">
+        <span style="font-size:10px;color:#94a3b8;white-space:nowrap;min-width:80px">Prénom affiché</span>
+        <input type="text" value="${dispVal}" placeholder="ex: Stéphanie"
+          onchange="setMemberDisplayName('${safe}', this.value)"
+          style="flex:1;height:26px;border-radius:4px;border:1px solid #e2e8f0;padding:0 8px;font-size:12px;color:#1e293b;outline:none;background:#fff">
+      </div>
     </div>`;
   }).join('');
 }
@@ -609,7 +674,7 @@ async function init() {
     members.forEach(m => {
       const opt = document.createElement('option');
       opt.value = m.name;
-      opt.textContent = getDotForMember(m.name) + ' ' + m.name;
+      opt.textContent = getDotForMember(m.name) + ' ' + getDisplayName(m.name);
       sel.appendChild(opt);
     });
     await loadWeek(weekOffset);
@@ -636,6 +701,66 @@ async function loadWeek(offset) {
   } finally {
     setLoading(false);
   }
+}
+
+// ── Slot popup ─────────────────────────────────────────────────────────────
+function findEventAtSlot(memberName, date, slotLabel) {
+  if (!eventsCache) return null;
+  const [slotH, slotM] = slotLabel.split(':').map(Number);
+  const slotStart = slotH * 60 + slotM;
+  const slotEnd   = slotStart + 30;
+  return (eventsCache.events_by_member[memberName] || []).find(e => {
+    if (e.date !== date) return false;
+    const [eH, eM] = e.start.split(':').map(Number);
+    const [fH, fM] = e.end.split(':').map(Number);
+    return (eH * 60 + eM) < slotEnd && (fH * 60 + fM) > slotStart;
+  }) || null;
+}
+
+function closeSlotPopup() {
+  document.getElementById('slotPopupOverlay').classList.remove('open');
+  document.getElementById('slotPopup').classList.remove('open');
+}
+
+async function openSlotPopup(closerNames, slotLabel, date, data) {
+  const title = document.getElementById('slotPopupTitle');
+  const body  = document.getElementById('slotPopupBody');
+  // Format date lisible
+  const d   = new Date(date + 'T12:00:00');
+  const dow = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
+  title.textContent = `📅 ${dow} ${d.getDate()} — ${slotLabel}`;
+  body.innerHTML = '<div class="slot-popup-loading">⏳ Chargement des leads…</div>';
+  document.getElementById('slotPopupOverlay').classList.add('open');
+  document.getElementById('slotPopup').classList.add('open');
+
+  // Pour chaque closer avec un RDV, récupérer les invités
+  const results = await Promise.all(closerNames.map(async name => {
+    const event    = findEventAtSlot(name, date, slotLabel);
+    let invitees   = [];
+    if (event?.uri) {
+      try {
+        const r = await fetch(`/api/invitees?event_uri=${encodeURIComponent(event.uri)}`);
+        if (r.ok) invitees = await r.json();
+      } catch(e) {}
+    }
+    return { closer: name, event, invitees };
+  }));
+
+  if (!results.length) {
+    body.innerHTML = '<p style="color:#94a3b8;font-size:12px;text-align:center;padding:12px">Aucun RDV</p>';
+    return;
+  }
+
+  body.innerHTML = results.map(({ closer, event, invitees }) => {
+    const dispName  = getDisplayName(closer);
+    const leadNames = invitees.length ? invitees.map(i => i.name).join(', ') : '—';
+    const evType    = event?.name || '';
+    return `<div class="slot-popup-rdv">
+      <div class="slot-popup-closer">👤 ${dispName}</div>
+      <div class="slot-popup-lead">🎯 Lead : <strong>${leadNames}</strong></div>
+      ${evType ? `<div class="slot-popup-meta">📋 ${evType} · ${event.start}–${event.end}</div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
@@ -697,18 +822,35 @@ function renderGrid(data) {
           const booked = effectiveOrder.filter(n => data.users[n]?.[di]?.[si] === 'red');
           const free   = effectiveOrder.filter(n => data.users[n]?.[di]?.[si] === 'green');
           let tip = '';
-          if (booked.length) tip += '🔴 RDV: ' + booked.join(', ');
+          if (booked.length) tip += '🔴 RDV: ' + booked.map(getDisplayName).join(', ');
           if (booked.length && free.length) tip += '\n';
-          if (free.length)   tip += '🟢 Dispo: ' + free.join(', ');
+          if (free.length)   tip += '🟢 Dispo: ' + free.map(getDisplayName).join(', ');
           if (tip) cell.dataset.tip = tip;
+          // Click sur un slot rouge → popup avec leads
+          if (slot.color === 'red' || slot.color === 'orange') {
+            cell.style.cursor = 'pointer';
+            const _di = di, _si = si, _label = label, _booked = booked.slice();
+            cell.addEventListener('click', () => {
+              const date = weekDays[_di];
+              if (date) openSlotPopup(_booked, _label, date, data);
+            });
+          }
         }
       } else {
         // ── Vue individuelle ──
         const raw    = gridData[di][si];
         const status = applyEventTypeFilter(currentView, di, raw, label, weekDays);
         if      (status === 'green') { cell.classList.add('slot-green'); cell.textContent = '✓'; }
-        else if (status === 'red')   { cell.classList.add('slot-red');   cell.textContent = 'RDV'; }
-        else                         { cell.classList.add('slot-grey'); }
+        else if (status === 'red')   {
+          cell.classList.add('slot-red'); cell.textContent = 'RDV';
+          cell.style.cursor = 'pointer';
+          const _di = di, _label = label, _name = currentView;
+          cell.addEventListener('click', () => {
+            const date = weekDays[_di];
+            if (date) openSlotPopup([_name], _label, date, data);
+          });
+        }
+        else { cell.classList.add('slot-grey'); }
       }
 
       grid.appendChild(cell);
