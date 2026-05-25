@@ -281,14 +281,8 @@
 <!-- ── Legend bar ─────────────────────────────────────────────────────── -->
 <div class="legend-bar">
   <span class="legend-title" id="legendTitle">Vue Générale</span>
-  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#dcfce7;border:1.5px solid #86efac"></div>&gt;1 closer dispo</div>
-  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#ffedd5;border:1.5px solid #fdba74"></div>1 closer dispo</div>
-  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>0 dispo</div>
-  <div class="legend-item legend-gen"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Hors horaires</div>
-  <div class="legend-sep"></div>
-  <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#dcfce7;border:1.5px solid #86efac"></div>Disponible</div>
-  <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>RDV posé</div>
-  <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Indisponible</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>RDV posé</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Pas de RDV</div>
   <span class="closer-stats" id="closerStats"></span>
 </div>
 
@@ -598,45 +592,9 @@ function recomputeGeneralGrid(data) {
     !excludedMembers.has(n) && (allowedByEventType === null || allowedByEventType.has(n))
   );
 
-  // Paramètres de filtrage avancé pour l'event type sélectionné
-  const isFiltered    = eventTypeFilter && eventTypeFilter !== 'all';
-  const evtDuration   = isFiltered ? (eventTypeDurations[eventTypeFilter] || 30) : 30;
-  const slotsNeeded   = Math.ceil(evtDuration / 30);  // nb de créneaux 30min consécutifs requis
-  // Délai minimum : 24h par défaut (en nombre de créneaux de 30min depuis maintenant)
-  const nowParis      = new Date(Date.now() + 2 * 3600000); // UTC+2
-  const minNoticeMs   = (parseInt(localStorage.getItem('calendly_min_notice_h') || '24')) * 3600000;
   const weekDays = data.week_days || [];
-  const nDays    = 7, nSlots = data.slot_labels.length;
-  const grid     = [];
-
-  // Helper : est-ce que le slot (di, si) est dans le délai minimum ?
-  function isPastNotice(di, si) {
-    if (!isFiltered || minNoticeMs <= 0) return false;
-    const dateStr = weekDays[di];
-    if (!dateStr) return false;
-    const label = data.slot_labels[si];
-    const [h, m] = label.split(':').map(Number);
-    const slotTime = new Date(dateStr + 'T00:00:00');
-    slotTime.setHours(h, m, 0, 0);
-    return (slotTime.getTime() - nowParis.getTime()) < minNoticeMs;
-  }
-
-  // Helper : est-ce que le slot (di, si) peut accueillir la durée complète de l'event ?
-  function hasEnoughConsecutiveSlots(di, si, memberStatuses2d) {
-    if (!isFiltered || slotsNeeded <= 1) return true;
-    // Vérifie que les slotsNeeded suivants ont au moins 1 closer libre
-    for (let k = 0; k < slotsNeeded; k++) {
-      const sik = si + k;
-      if (sik >= nSlots) return false;
-      const futStatuses = order.map(n => {
-        const raw = data.users[n]?.[di]?.[sik] || 'grey';
-        return applyEventTypeFilter(n, di, raw, data.slot_labels[sik], weekDays);
-      });
-      const hasFree = futStatuses.some(s => s === 'green');
-      if (!hasFree) return false;
-    }
-    return true;
-  }
+  const nDays = 7, nSlots = data.slot_labels.length;
+  const grid  = [];
 
   for (let di = 0; di < nDays; di++) {
     const day = [];
@@ -647,21 +605,9 @@ function recomputeGeneralGrid(data) {
         return applyEventTypeFilter(n, di, raw, label, weekDays);
       });
       const booked = statuses.filter(s => s === 'red').length;
-      let   free   = statuses.filter(s => s === 'green').length;
-      const total  = booked + free;
-
-      // Filtres avancés (délai min + durée) pour l'event type sélectionné
-      if (isFiltered && free > 0) {
-        if (isPastNotice(di, si) || !hasEnoughConsecutiveSlots(di, si, null)) {
-          free = 0;
-        }
-      }
-
-      const effectiveTotal = booked + free;
-      if (effectiveTotal === 0 && booked === 0) day.push({color:'grey',   label:'',                       booked:0,     free:0});
-      else if (free === 0)                       day.push({color:'red',    label:`${booked}/${total}`,     booked,       free:0});
-      else if (free === 1)                       day.push({color:'orange', label:`${booked}/${total}`,     booked,       free:1});
-      else                                       day.push({color:'green',  label:`${booked}/${total}`,     booked,       free});
+      // Mode RDV uniquement : rouge si RDV posé, gris sinon
+      if (booked > 0) day.push({color:'red', label:`${booked}`, booked, free:0});
+      else            day.push({color:'grey', label:'', booked:0, free:0});
     }
     grid.push(day);
   }
@@ -919,8 +865,8 @@ function renderGrid(data) {
   const grid      = document.getElementById('calGrid');
   const isGeneral = currentView === 'general';
 
-  // Recomputer la grille générale si nécessaire (exclusions ou filtre event)
-  const needsRecompute = isGeneral && (excludedMembers.size > 0 || eventTypeFilter !== 'all' || excludedEventTypes.size > 0);
+  // Toujours recomputer la grille générale (mode RDV uniquement)
+  const needsRecompute = isGeneral;
   let effectiveGeneral = data.general;
   let effectiveOrder   = data.user_order;
   if (needsRecompute) {
@@ -991,11 +937,10 @@ function renderGrid(data) {
           }
         }
       } else {
-        // ── Vue individuelle ──
+        // ── Vue individuelle ── RDV uniquement
         const raw    = gridData[di][si];
         const status = applyEventTypeFilter(currentView, di, raw, label, weekDays);
-        if      (status === 'green') { cell.classList.add('slot-green'); cell.textContent = '✓'; }
-        else if (status === 'red')   {
+        if (status === 'red') {
           cell.classList.add('slot-red'); cell.textContent = 'RDV';
           cell.style.cursor = 'pointer';
           const _di = di, _label = label, _name = currentView;
@@ -1003,8 +948,9 @@ function renderGrid(data) {
             const date = weekDays[_di];
             if (date) openSlotPopup([_name], _label, date, data);
           });
+        } else {
+          cell.classList.add('slot-grey');
         }
-        else { cell.classList.add('slot-grey'); }
       }
 
       grid.appendChild(cell);
@@ -1029,14 +975,12 @@ function updateStats(isGeneral, gridData, data, effectiveOrder) {
     statsRow.style.display = 'flex';
     statsRow.innerHTML = `
       <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${(effectiveOrder || data.user_order).length}</div></div>
-      <div class="stat-card"><div class="stat-label">Slots libres</div><div class="stat-value green">${totalGreen}</div></div>
-      <div class="stat-card"><div class="stat-label">RDV posés</div><div class="stat-value red">${totalRed}</div></div>
-      <div class="stat-card"><div class="stat-label">Taux remplissage</div><div class="stat-value ${rate > 70 ? 'red' : rate > 40 ? 'orange' : 'green'}">${rate}%</div></div>`;
+      <div class="stat-card"><div class="stat-label">RDV posés</div><div class="stat-value red">${totalRed}</div></div>`;
   } else if (!isGeneral && gridData) {
-    let green = 0, red = 0;
-    gridData.forEach(day => day.forEach(s => { if (s === 'green') green++; if (s === 'red') red++; }));
+    let red = 0;
+    gridData.forEach(day => day.forEach(s => { if (s === 'red') red++; }));
     statsRow.style.display = 'none';
-    document.getElementById('closerStats').textContent = `${red} RDV posés · ${green} slots libres cette semaine`;
+    document.getElementById('closerStats').textContent = `${red} RDV posés cette semaine`;
   } else {
     statsRow.style.display = 'none';
     document.getElementById('closerStats').textContent = '';
