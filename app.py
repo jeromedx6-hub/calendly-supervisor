@@ -356,21 +356,35 @@ def debug_avail():
     """Debug brut de l'endpoint event_type_available_times Calendly."""
     event_type_uri = request.args.get("uri", "")
     if not event_type_uri:
-        return jsonify({"error": "uri param requis"}), 400
-    from datetime import datetime, timedelta
+        # Utilise le premier URI de Mon Passage à l'action par défaut
+        try:
+            names = calendly_api.get_all_event_type_names()
+            mpa = next((e for e in names if "Passage" in e["name"]), None)
+            if mpa and mpa.get("uris"):
+                event_type_uri = mpa["uris"][0]
+        except Exception:
+            pass
     now = datetime.utcnow()
     start_utc = now.strftime("%Y-%m-%dT%H:%M:%S.000000Z")
-    end_utc   = (now + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000000Z")
-    try:
-        r = req_http.get(
-            f"{calendly_api.CALENDLY_BASE}/event_type_available_times",
-            headers=calendly_api.headers(),
-            params={"event_type": event_type_uri, "start_time": start_utc, "end_time": end_utc},
-            timeout=15
-        )
-        return jsonify({"status": r.status_code, "body": r.json()})
-    except Exception as e:
-        return jsonify({"error": str(e)})
+    end_utc   = (now + timedelta(days=6)).strftime("%Y-%m-%dT%H:%M:%S.000000Z")
+    results = []
+    uris = [u.strip() for u in event_type_uri.split(",") if u.strip()] if event_type_uri else []
+    for uri in uris[:3]:  # max 3 pour debug
+        try:
+            r = req_http.get(
+                f"{calendly_api.CALENDLY_BASE}/event_type_available_times",
+                headers=calendly_api.headers(),
+                params={"event_type": uri, "start_time": start_utc, "end_time": end_utc},
+                timeout=15
+            )
+            body = r.json()
+            results.append({"uri": uri.split("/")[-1], "status": r.status_code,
+                             "count": len(body.get("collection", [])),
+                             "error": body.get("message", body.get("title", "")) if not r.ok else None,
+                             "sample": body.get("collection", [])[:2]})
+        except Exception as e:
+            results.append({"uri": uri.split("/")[-1], "error": str(e)})
+    return jsonify({"start": start_utc, "end": end_utc, "results": results})
 
 @app.route("/api/test_supabase")
 def test_supabase():
