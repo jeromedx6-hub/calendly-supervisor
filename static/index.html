@@ -1696,37 +1696,42 @@ function renderStatsCloserChart(bookings) {
 
 function renderStatsEventChart(bookings) {
   statsDestroyChart('event');
-  const byEvent = {};
-  bookings.forEach(b => { const k = b.event_type || 'Inconnu'; byEvent[k] = (byEvent[k]||0)+1; });
-  const sorted = Object.entries(byEvent).sort((a,b) => b[1]-a[1]);
-  const palette = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#14b8a6','#f97316','#a855f7'];
-  const colors  = sorted.map((_,i) => palette[i % palette.length]);
+  const gran = document.getElementById('statGran')?.value || 'week';
+  const palette = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#14b8a6','#f97316','#a855f7','#84cc16','#f43f5e'];
+
+  // Tous les event types présents, triés par volume total décroissant
+  const totalByEvent = {};
+  bookings.forEach(b => { const k = b.event_type || 'Inconnu'; totalByEvent[k] = (totalByEvent[k]||0)+1; });
+  const eventTypes = Object.entries(totalByEvent).sort((a,b)=>b[1]-a[1]).map(([k])=>k);
+
+  // Périodes (axe X)
+  const periodSet = new Set(bookings.map(b => statsPeriodKey(b.date, gran)));
+  const periods   = [...periodSet].sort();
+
+  // Un dataset par event type (stacked)
+  const datasets = eventTypes.map((evType, i) => ({
+    label:           evType,
+    data:            periods.map(p => bookings.filter(b => (b.event_type||'Inconnu') === evType && statsPeriodKey(b.date, gran) === p).length),
+    backgroundColor: palette[i % palette.length] + 'cc',
+    borderColor:     palette[i % palette.length],
+    borderWidth:     1,
+    borderRadius:    3,
+  }));
+
   const ctx = document.getElementById('chartEvent');
   if (!ctx) return;
-  ctx.parentElement.style.minHeight = '';
-  ctx.style.height = '';
   statsCharts['event'] = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels:   sorted.map(([n]) => n),
-      datasets: [{
-        data:            sorted.map(([,c]) => c),
-        backgroundColor: colors,
-        borderRadius:    5,
-        borderWidth:     0,
-      }],
-    },
+    data: { labels: periods.map(p => statsPeriodLabel(p, gran)), datasets },
     options: {
       responsive: true,
       plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: {
-          label: (ctx) => ` ${ctx.raw} RDV (${bookings.length ? Math.round(ctx.raw/bookings.length*100) : 0}%)`
-        }}
+        legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
+        tooltip: { callbacks: { footer: (items) => { const t = items.reduce((s,i)=>s+i.raw,0); return items.length>1?`Total : ${t}`:''; } } }
       },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 35, minRotation: 20 } },
-        y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } }
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }
       }
     }
   });
