@@ -417,7 +417,7 @@ def bookings_for_date():
             params={
                 "date":   f"eq.{date}",
                 "status": "eq.active",
-                "select": "closer_name,lead_name,lead_email,event_type,start_time,end_time,date",
+                "select": "member_name,lead_name,lead_email,event_type,start_time,date",
                 "order":  "start_time",
             },
             timeout=8
