@@ -213,8 +213,10 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
                     continue
                 sdt = day_paris.replace(hour=sh, minute=sm)
                 edt = day_paris.replace(hour=eh, minute=em)
-                is_booked  = any(bt == "calendly" and overlaps(sdt, edt, bs, be) for bs, be, bt in busy)
-                is_blocked = any(bt == "external" and overlaps(sdt, edt, bs, be) for bs, be, bt in busy)
+                # Rouge uniquement si l'événement DÉMARRE dans ce slot (≠ continuation)
+                # → 1 case rouge = 1 RDV, quelle que soit la durée
+                is_booked  = any(bt == "calendly" and sdt <= bs < edt for bs, be, bt in busy)
+                is_blocked = any(bt == "external"  and overlaps(sdt, edt, bs, be) for bs, be, bt in busy)
                 if is_booked:    day_slots.append("red")
                 elif is_blocked: day_slots.append("grey")
                 else:            day_slots.append("green")
