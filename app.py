@@ -324,6 +324,22 @@ def health():
         "webhook_url": f"{APP_URL}/api/webhook/calendly" if APP_URL else None,
     })
 
+@app.route("/api/test_supabase")
+def test_supabase():
+    """Teste la connectivité Supabase depuis Railway — diagnostic DNS/auth."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return jsonify({"error": "Supabase non configuré (variables manquantes)", "url_used": SUPABASE_URL})
+    try:
+        r = req_http.get(
+            f"{SUPABASE_URL}/rest/v1/bookings",
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+            params={"limit": "1", "select": "id"},
+            timeout=8
+        )
+        return jsonify({"status": r.status_code, "ok": r.ok, "body": r.text[:300], "url_used": SUPABASE_URL})
+    except Exception as e:
+        return jsonify({"error": str(e), "url_used": SUPABASE_URL})
+
 @app.route("/api/debug")
 def debug():
     key = os.environ.get("CALENDLY_API_KEY", "")
