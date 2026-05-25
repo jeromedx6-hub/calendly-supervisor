@@ -919,17 +919,19 @@ function renderGrid(data) {
         else                              { cell.classList.add('slot-grey'); }
 
         if (slot.color !== 'grey') {
-          const booked = effectiveOrder.filter(n => data.users[n]?.[di]?.[si] === 'red');
-          const free   = effectiveOrder.filter(n => data.users[n]?.[di]?.[si] === 'green');
-          let tip = '';
-          if (booked.length) tip += '🔴 RDV: ' + booked.map(getDisplayName).join(', ');
-          if (booked.length && free.length) tip += '\n';
-          if (free.length)   tip += '🟢 Dispo: ' + free.map(getDisplayName).join(', ');
-          if (tip) cell.dataset.tip = tip;
+          // Recalcul des closers réellement bookés via applyEventTypeFilter
+          // (même logique que recomputeGeneralGrid → cohérence count / tooltip)
+          const bookedNames = effectiveOrder.filter(n => {
+            const raw = data.users[n]?.[di]?.[si] || 'grey';
+            return applyEventTypeFilter(n, di, raw, label, weekDays) === 'red';
+          });
+          if (bookedNames.length) {
+            cell.dataset.tip = bookedNames.map(getDisplayName).join('\n');
+          }
           // Click sur un slot rouge → popup avec leads
-          if (slot.color === 'red' || slot.color === 'orange') {
+          if (slot.color === 'red') {
             cell.style.cursor = 'pointer';
-            const _di = di, _si = si, _label = label, _booked = booked.slice();
+            const _di = di, _label = label, _booked = bookedNames.slice();
             cell.addEventListener('click', () => {
               const date = weekDays[_di];
               if (date) openSlotPopup(_booked, _label, date, data);
