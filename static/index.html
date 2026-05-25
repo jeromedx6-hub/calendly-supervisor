@@ -557,13 +557,20 @@ function applyEventTypeFilter(memberName, di, rawStatus, slotLabel, weekDays) {
 function setEventTypeFilter(val) {
   eventTypeFilter = val;
   updateBookingUrlBar(val);
+  updateLegendAndTitle();
   const data = next7Mode ? next7Cache : weekCache[weekOffset];
   if (data) renderGrid(data);
 }
 
 // ── Recompute general grid côté client (exclusions + filtre event) ─────────
 function recomputeGeneralGrid(data) {
-  const order    = data.user_order.filter(n => !excludedMembers.has(n));
+  // Filtrer par membres exclus + membres ayant l'event type sélectionné
+  const allowedByEventType = (eventTypeFilter && eventTypeFilter !== 'all' && eventTypeMembers[eventTypeFilter]?.length)
+    ? new Set(eventTypeMembers[eventTypeFilter])
+    : null;
+  const order = data.user_order.filter(n =>
+    !excludedMembers.has(n) && (allowedByEventType === null || allowedByEventType.has(n))
+  );
   const weekDays = data.week_days || [];
   const nDays    = 7, nSlots = data.slot_labels.length;
   const grid     = [];
@@ -616,7 +623,8 @@ async function fetchMembers() {
 }
 
 // ── Charger les noms d'event types depuis l'API (une fois au démarrage) ───
-let eventTypeUrls = {};  // name → scheduling_url
+let eventTypeUrls    = {};  // name → scheduling_url
+let eventTypeMembers = {};  // name → [member_name, ...]
 
 async function loadEventTypeNames() {
   try {
@@ -625,11 +633,15 @@ async function loadEventTypeNames() {
     const items = await r.json();
     if (!Array.isArray(items)) return;
 
-    // Support ancien format (array of strings) ET nouveau format (array of {name,url})
+    // Support ancien format (array of strings) ET nouveau format (array of {name,url,members})
     const names = items.map(i => typeof i === 'string' ? i : i.name);
-    eventTypeUrls = {};
+    eventTypeUrls    = {};
+    eventTypeMembers = {};
     items.forEach(i => {
-      if (typeof i === 'object' && i.name) eventTypeUrls[i.name] = i.url || '';
+      if (typeof i === 'object' && i.name) {
+        eventTypeUrls[i.name]    = i.url     || '';
+        eventTypeMembers[i.name] = i.members || [];
+      }
     });
     allEventTypeNames = names;
 
@@ -998,7 +1010,8 @@ function updateLegendAndTitle() {
   document.querySelectorAll('.legend-gen').forEach(el => el.style.display = isGeneral  ? 'flex' : 'none');
   document.querySelectorAll('.legend-ind').forEach(el => el.style.display = !isGeneral ? 'flex' : 'none');
   document.getElementById('legendTitle').textContent = isGeneral ? 'Vue Générale' : 'Vue Individuelle';
-  document.getElementById('viewTitle').textContent   = isGeneral ? 'Vue Générale — Tous les closers' : `Vue individuelle — ${currentView}`;
+  const filterLabel = (eventTypeFilter && eventTypeFilter !== 'all') ? ` — ${eventTypeFilter}` : ' — Tous les closers';
+  document.getElementById('viewTitle').textContent   = isGeneral ? `Vue Générale${filterLabel}` : `Vue individuelle — ${currentView}`;
   document.getElementById('viewBadge').textContent   = isGeneral ? 'Global' : 'Closer';
   document.getElementById('viewBadge').className     = 'view-badge ' + (isGeneral ? 'badge-global' : 'badge-closer');
 }
