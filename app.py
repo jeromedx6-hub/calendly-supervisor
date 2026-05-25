@@ -402,6 +402,30 @@ def test_supabase():
     except Exception as e:
         return jsonify({"error": str(e), "url_used": SUPABASE_URL})
 
+@app.route("/api/bookings_for_date")
+def bookings_for_date():
+    """Retourne tous les bookings actifs pour une date donnée depuis Supabase."""
+    date = request.args.get("date", "")
+    if not date:
+        return jsonify({"error": "param date requis (YYYY-MM-DD)"}), 400
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return jsonify({"error": "Supabase non configuré"}), 500
+    try:
+        r = req_http.get(
+            f"{SUPABASE_URL}/rest/v1/bookings",
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+            params={
+                "date":   f"eq.{date}",
+                "status": "eq.active",
+                "select": "closer_name,lead_name,lead_email,event_type,start_time,end_time,date",
+                "order":  "start_time",
+            },
+            timeout=8
+        )
+        return jsonify({"bookings": r.json() if r.ok else [], "status": r.status_code})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/debug")
 def debug():
     key = os.environ.get("CALENDLY_API_KEY", "")
