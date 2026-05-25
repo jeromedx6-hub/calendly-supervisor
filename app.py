@@ -350,6 +350,27 @@ def event_available_times():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/debug_avail")
+def debug_avail():
+    """Debug brut de l'endpoint event_type_available_times Calendly."""
+    event_type_uri = request.args.get("uri", "")
+    if not event_type_uri:
+        return jsonify({"error": "uri param requis"}), 400
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    start_utc = now.strftime("%Y-%m-%dT%H:%M:%S.000000Z")
+    end_utc   = (now + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000000Z")
+    try:
+        r = req_http.get(
+            f"{calendly_api.CALENDLY_BASE}/event_type_available_times",
+            headers=calendly_api.headers(),
+            params={"event_type": event_type_uri, "start_time": start_utc, "end_time": end_utc},
+            timeout=15
+        )
+        return jsonify({"status": r.status_code, "body": r.json()})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 @app.route("/api/test_supabase")
 def test_supabase():
     """Teste la connectivité Supabase depuis Railway — diagnostic DNS/auth."""
