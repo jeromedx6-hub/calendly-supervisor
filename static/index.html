@@ -1004,9 +1004,10 @@ async function loadEventsForFilter() {
     // Charger aussi la vraie dispo Calendly si un event type est sélectionné
     if (eventTypeFilter !== 'all') {
       await loadRealAvailability(eventTypeFilter);
-      const data = next7Mode ? next7Cache : weekCache[weekOffset];
-      if (data) renderGrid(data);
     }
+    // Toujours re-render : les tooltips (RDV posés, par jour) nécessitent eventsCache
+    const data = next7Mode ? next7Cache : weekCache[weekOffset];
+    if (data) renderGrid(data);
   } catch(e) { /* silencieux */ }
 }
 
