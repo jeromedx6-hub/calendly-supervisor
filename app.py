@@ -217,7 +217,7 @@ def slot_invitees():
 
         # 1. Supabase
         row = sb_get_booking(member_name, date, time)
-        if row:
+        if row and row.get("lead_name"):
             return jsonify({
                 "invitees": [{"name": row.get("lead_name", ""), "email": row.get("lead_email", "")}],
                 "event":    {
@@ -228,9 +228,16 @@ def slot_invitees():
                 "source": "supabase",
             })
 
-        # 2. API Calendly (fallback)
+        # 2. API Calendly (fallback — aussi si lead_name vide dans Supabase)
         result = calendly_api.get_slot_invitees(member_name, date, time)
         result["source"] = "calendly_api"
+        # Si Supabase avait la row mais pas le lead_name, enrichir avec event_type
+        if row and not result.get("event"):
+            result["event"] = {
+                "name":  row.get("event_type", ""),
+                "start": row.get("start_time", ""),
+                "uri":   row.get("event_uri", ""),
+            }
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

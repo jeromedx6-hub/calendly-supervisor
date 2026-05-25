@@ -1122,15 +1122,26 @@ async function openSlotPopup(closerNames, slotLabel, date, data) {
   }
 
   body.innerHTML = results.map(({ closer, event, invitees }) => {
-    const dispName  = getDisplayName(closer);
+    const dispName   = getDisplayName(closer);
     const validNames = (Array.isArray(invitees) ? invitees : []).map(i => i.name).filter(Boolean);
     const leadNames  = validNames.length ? validNames.join(', ') : '—';
     const evType     = event?.name || '';
+
+    // Récupère end depuis eventsCache si l'API ne le fournit pas
+    let evEnd = event?.end;
+    if (!evEnd && event?.start && eventsCache?.events_by_member) {
+      const cached = (eventsCache.events_by_member[closer] || [])
+        .find(e => e.start === event.start);
+      if (cached) evEnd = cached.end;
+    }
+
+    const timeRange  = event?.start ? `${event.start}${evEnd ? '–' + evEnd : ''}` : '';
     const noEvent    = !event ? '<div class="slot-popup-meta" style="color:#f59e0b">⚠ Détails non disponibles</div>' : '';
+    const leadColor  = leadNames === '—' ? '#94a3b8' : 'inherit';
     return `<div class="slot-popup-rdv">
       <div class="slot-popup-closer">👤 ${dispName}</div>
-      <div class="slot-popup-lead">🎯 Lead : <strong>${leadNames}</strong></div>
-      ${evType ? `<div class="slot-popup-meta">📋 ${evType} · ${event.start}–${event.end}</div>` : noEvent}
+      <div class="slot-popup-lead">🎯 Lead : <strong style="color:${leadColor}">${leadNames}</strong></div>
+      ${evType ? `<div class="slot-popup-meta">📋 ${evType}${timeRange ? ' · ' + timeRange : ''}</div>` : noEvent}
     </div>`;
   }).join('');
 }

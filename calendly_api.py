@@ -507,7 +507,34 @@ def get_slot_invitees(member_name: str, date: str, time: str) -> dict:
     start_utc = (day - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT00:00:00.000000Z")
     end_utc   = (day - timedelta(hours=PARIS_OFFSET) + timedelta(days=1)).strftime("%Y-%m-%dT00:00:00.000000Z")
 
-    events = get_scheduled_events(member["uri"], start_utc, end_utc)
+    # Requête org-level pour couvrir tous les membres (y compris non-propriétaire du token)
+    try:
+        org_uri = get_org_info()["org_uri"]
+        raw = api_get_all_pages(
+            f"{CALENDLY_BASE}/scheduled_events",
+            {"organization": org_uri, "status": "active",
+             "min_start_time": start_utc, "max_start_time": end_utc}
+        )
+        events = []
+        for e in raw:
+            memberships = e.get("event_memberships", [])
+            if not memberships:
+                continue
+            # Filtrer sur ce membre uniquement
+            if memberships[0].get("user", "") != member["uri"]:
+                continue
+            s = parse_dt_paris(e["start_time"])
+            f = parse_dt_paris(e["end_time"])
+            events.append({
+                "name":     e.get("name", "RDV"),
+                "start":    s.strftime("%H:%M"),
+                "end":      f.strftime("%H:%M"),
+                "date":     s.strftime("%Y-%m-%d"),
+                "duration": int((f - s).total_seconds() / 60),
+                "uri":      e.get("uri", ""),
+            })
+    except Exception:
+        events = get_scheduled_events(member["uri"], start_utc, end_utc)
 
     # Trouver l'événement qui chevauche le créneau de 30 min
     slotH, slotM = (int(x) for x in time.split(':'))
