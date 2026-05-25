@@ -287,6 +287,27 @@ def members():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/import_history", methods=["POST"])
+def import_history():
+    """Importe tous les RDV historiques (90j passés + 30j futurs) dans Supabase."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return jsonify({"error": "Supabase non configuré"}), 500
+    try:
+        bookings = calendly_api.get_all_bookings_for_import(days_past=90, days_future=30)
+        if not bookings:
+            return jsonify({"ok": True, "imported": 0})
+
+        # Upsert en batch (Supabase accepte un tableau)
+        r = req_http.post(
+            f"{SUPABASE_URL}/rest/v1/bookings",
+            headers=_sb_headers("resolution=merge-duplicates,return=minimal"),
+            json=bookings,
+            timeout=60
+        )
+        return jsonify({"ok": r.ok, "imported": len(bookings), "status": r.status_code})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/refresh", methods=["POST"])
 def refresh():
     calendly_api.cache_clear()

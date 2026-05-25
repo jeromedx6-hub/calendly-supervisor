@@ -2,6 +2,7 @@ import requests
 import os
 from datetime import datetime, timedelta
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
 import time
 
 CALENDLY_BASE = "https://api.calendly.com"
@@ -20,6 +21,23 @@ def api_get(url, params=None):
     r = requests.get(url, headers=headers(), params=params, timeout=10)
     r.raise_for_status()
     return r.json()
+
+def api_get_all_pages(url, params=None):
+    """Récupère toutes les pages d'un endpoint paginé Calendly."""
+    all_items = []
+    p = dict(params or {})
+    p.setdefault("count", 100)
+    current_url = url
+    current_params = p
+    while True:
+        data = api_get(current_url, current_params)
+        all_items.extend(data.get("collection", []))
+        next_page = data.get("pagination", {}).get("next_page")
+        if not next_page:
+            break
+        current_url   = next_page
+        current_params = {}   # next_page inclut déjà tous les params
+    return all_items
 
 # ── Cache simple en mémoire (TTL 30 min) ──────────────────────────────────────
 _cache = {}
@@ -525,3 +543,57 @@ def get_events_next7_data() -> dict:
     }
     cache_set(ckey, result, ttl=1800)
     return result
+
+
+# ── Import historique vers Supabase ───────────────────────────────────────────
+def get_all_bookings_for_import(days_past: int = 90, days_future: int = 30) -> list:
+    """
+    Retourne tous les RDV (passés + futurs) avec invités pour tous les membres.
+    Utilise ThreadPoolExecutor pour paralléliser les appels /invitees.
+    """
+    now       = datetime.utcnow()
+    start_utc = (now - timedelta(days=days_past)).strftime("%Y-%m-%dT00:00:00.000000Z")
+    end_utc   = (now + timedelta(days=days_future)).strftime("%Y-%m-%dT23:59:59.000000Z")
+
+    all_members = get_members()
+    raw_events  = []
+
+    for m in all_members:
+        try:
+            events = api_get_all_pages(
+                f"{CALENDLY_BASE}/scheduled_events",
+                {"user": m["uri"], "status": "active",
+                 "min_start_time": start_utc, "max_start_time": end_utc}
+            )
+            for e in events:
+                raw_events.append((m["name"], e))
+        except Exception as ex:
+            print(f"[import] {m['name']}: {ex}")
+
+    def build_booking(member_name_event):
+        member_name, e = member_name_event
+        try:
+            s = parse_dt_paris(e["start_time"])
+            booking = {
+                "event_uri":   e.get("uri", ""),
+                "member_name": member_name,
+                "event_type":  e.get("name", ""),
+                "start_time":  s.strftime("%H:%M"),
+                "date":        s.strftime("%Y-%m-%d"),
+                "status":      "active",
+                "lead_name":   "",
+                "lead_email":  "",
+            }
+            invitees = get_event_invitees(e.get("uri", ""))
+            if invitees:
+                booking["lead_name"]  = invitees[0].get("name", "")
+                booking["lead_email"] = invitees[0].get("email", "")
+            return booking
+        except Exception as ex:
+            print(f"[import] build error: {ex}")
+            return None
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(build_booking, raw_events))
+
+    return [b for b in results if b is not None]
