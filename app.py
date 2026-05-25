@@ -40,13 +40,18 @@ def _sb_headers(prefer=None):
         h["Prefer"] = prefer
     return h
 
+_SB_UPSERT_URL = None  # lazy-init
+
+def _sb_upsert_url():
+    return f"{SUPABASE_URL}/rest/v1/bookings?on_conflict=event_uri"
+
 def sb_upsert(data: dict):
-    """Insère ou met à jour un booking dans Supabase."""
+    """Insère ou met à jour un booking dans Supabase (upsert sur event_uri)."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return
     try:
         req_http.post(
-            f"{SUPABASE_URL}/rest/v1/bookings",
+            _sb_upsert_url(),
             headers=_sb_headers("resolution=merge-duplicates,return=minimal"),
             json=data, timeout=5
         )
@@ -312,7 +317,7 @@ def import_history():
         for i in range(0, len(unique), CHUNK):
             chunk = unique[i:i+CHUNK]
             r = req_http.post(
-                f"{SUPABASE_URL}/rest/v1/bookings",
+                _sb_upsert_url(),
                 headers=_sb_headers("resolution=merge-duplicates,return=minimal"),
                 json=chunk,
                 timeout=30
