@@ -167,6 +167,10 @@
   .gcal-event .ev-closer { font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:10px; line-height:1.3; }
   .gcal-event .ev-type { color:rgba(255,255,255,.82); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:9px; line-height:1.2; margin-top:1px; }
   .gcal-event .ev-time { color:rgba(255,255,255,.7); font-size:9px; line-height:1.2; }
+  .gcal-day-count { display:inline-block; margin-top:3px; font-size:10px; font-weight:600; color:#60a5fa; background:rgba(96,165,250,.12); border-radius:10px; padding:1px 7px; cursor:default; }
+  .gcal-day-count.empty { color:#475569; background:none; }
+  .gcal-day-count:not(.empty) { cursor:pointer; }
+  .gcal-day-count:not(.empty):hover { background:rgba(96,165,250,.25); }
 
   /* ── Diagnostic ── */
   .diag-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
@@ -351,6 +355,7 @@
 </div>
 
 <!-- ── Slot popup ─────────────────────────────────────────────────────── -->
+<div id="gcalTooltip" style="display:none;position:fixed;background:#0f172a;color:#fff;border-radius:10px;padding:12px 16px;font-size:12px;z-index:9999;box-shadow:0 4px 24px rgba(0,0,0,.45);pointer-events:none;max-width:300px;line-height:1.6;"></div>
 <div class="slot-popup-overlay" id="slotPopupOverlay" onclick="closeSlotPopup()"></div>
 <div class="slot-popup" id="slotPopup">
   <div class="slot-popup-hdr">
@@ -582,8 +587,8 @@ async function setEventTypeFilter(val) {
 }
 
 // ── Google Calendar renderer ───────────────────────────────────────────────
-const GCAL_SLOT_H  = 36;   // px par slot de 30min
-const GCAL_START_H = 8;    // heure de début (08:00)
+const GCAL_SLOT_H  = 36;
+const GCAL_START_H = 8;
 const CLOSER_COLORS = [
   '#ef4444','#f97316','#eab308','#22c55e',
   '#06b6d4','#3b82f6','#8b5cf6','#ec4899',
@@ -592,6 +597,64 @@ const CLOSER_COLORS = [
 
 function strToMin(t) { const [h,m] = t.split(':').map(Number); return h*60+m; }
 
+// ── Tooltip flottant ────────────────────────────────────────────────────────
+const _tt = document.getElementById('gcalTooltip');
+function showTip(html, ev) {
+  _tt.innerHTML = html;
+  _tt.style.display = 'block';
+  _posTip(ev);
+}
+function hideTip() { _tt.style.display = 'none'; }
+function _posTip(ev) {
+  const W = _tt.offsetWidth, H = _tt.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + W > window.innerWidth  - 8) x = ev.clientX - W - 8;
+  if (y + H > window.innerHeight - 8) y = ev.clientY - H - 8;
+  _tt.style.left = x + 'px'; _tt.style.top = y + 'px';
+}
+document.addEventListener('mousemove', ev => { if (_tt.style.display !== 'none') _posTip(ev); });
+
+// ── Construit le HTML d'un tooltip d'events ────────────────────────────────
+function buildEventsTipHtml(events, title) {
+  if (!events.length) return '';
+  const byCloser = {}, byEvent = {};
+  for (const e of events) {
+    byCloser[e.closer] = (byCloser[e.closer] || 0) + 1;
+    if (e.name) byEvent[e.name] = (byEvent[e.name] || 0) + 1;
+  }
+  const row = (label, count, color) =>
+    `<div style="display:flex;justify-content:space-between;gap:20px;padding:1px 0">
+       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${label}</span>
+       <span style="font-weight:700;color:${color};flex-shrink:0">${count}</span>
+     </div>`;
+  const sep = `<div style="border-top:1px solid #334155;margin:7px 0 5px"></div>`;
+  let h = `<div style="font-weight:700;font-size:13px;margin-bottom:8px">${title} — <span style="color:#60a5fa">${events.length} RDV</span></div>`;
+  h += `<div style="font-weight:600;color:#94a3b8;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Par closer</div>`;
+  Object.entries(byCloser).sort((a,b)=>b[1]-a[1]).forEach(([n,c]) => h += row(getDisplayName(n), c, '#60a5fa'));
+  if (Object.keys(byEvent).length) {
+    h += sep;
+    h += `<div style="font-weight:600;color:#94a3b8;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Par event</div>`;
+    Object.entries(byEvent).sort((a,b)=>b[1]-a[1]).forEach(([n,c]) => h += row(n, c, '#34d399'));
+  }
+  return h;
+}
+
+function buildClosersTipHtml(allWeekEvents, effectiveOrder) {
+  const byCloser = {};
+  allWeekEvents.forEach(e => { byCloser[e.closer] = (byCloser[e.closer] || 0) + 1; });
+  let h = `<div style="font-weight:700;font-size:13px;margin-bottom:8px">Closers actifs — <span style="color:#60a5fa">${effectiveOrder.length}</span></div>`;
+  h += `<div style="font-weight:600;color:#94a3b8;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">RDV par closer (semaine)</div>`;
+  effectiveOrder.forEach(n => {
+    const c = byCloser[n] || 0;
+    h += `<div style="display:flex;justify-content:space-between;gap:20px;padding:1px 0">
+      <span>${getDisplayName(n)}</span>
+      <span style="font-weight:700;color:#60a5fa">${c}</span>
+    </div>`;
+  });
+  return h;
+}
+
+// ── Algorithme de colonnes GCal ────────────────────────────────────────────
 function assignGCalColumns(events) {
   if (!events.length) return events;
   const sorted = [...events].sort((a,b) => a.startMin - b.startMin || b.endMin - a.endMin);
@@ -599,51 +662,49 @@ function assignGCalColumns(events) {
   sorted.forEach(e => {
     let c = colEnds.findIndex(end => end <= e.startMin);
     if (c === -1) { c = colEnds.length; colEnds.push(0); }
-    e.col = c;
-    colEnds[c] = e.endMin;
+    e.col = c; colEnds[c] = e.endMin;
   });
   sorted.forEach(e => {
-    const overlapping = sorted.filter(f => f !== e && f.startMin < e.endMin && f.endMin > e.startMin);
-    e.totalCols = overlapping.reduce((mx,f) => Math.max(mx, f.col+1), e.col+1);
+    const ov = sorted.filter(f => f !== e && f.startMin < e.endMin && f.endMin > e.startMin);
+    e.totalCols = ov.reduce((mx,f) => Math.max(mx, f.col+1), e.col+1);
   });
   return sorted;
 }
 
+// ── Rendu GCal (général ET closer individuel) ──────────────────────────────
 function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels, todayIdx) {
   const evByMember = eventsCache?.events_by_member || {};
   const slotLabels = data.slot_labels || [];
-  const N = slotLabels.length;
-  const TOTAL_H = N * GCAL_SLOT_H;
-  const START_MIN = GCAL_START_H * 60;
+  const N          = slotLabels.length;
+  const TOTAL_H    = N * GCAL_SLOT_H;
+  const START_MIN  = GCAL_START_H * 60;
 
-  // Couleur par closer (stable selon sa position dans effectiveOrder)
-  const allOrder = data.user_order || [];
+  // Couleurs stables par closer (position dans user_order global)
   const colorMap = {};
-  allOrder.forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+  (data.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
 
-  // Construit la liste d'events pour un jour donné
+  // Construit les events d'un jour
   function buildEvents(di) {
     const dateStr = weekDays[di];
     const events  = [];
     for (const closer of effectiveOrder) {
-      // Source 1 : eventsCache (données réelles avec durée)
       const cached = (evByMember[closer] || []).filter(e => e.date === dateStr);
       if (cached.length) {
         for (const e of cached) {
           const startMin = strToMin(e.start);
           let   endMin   = strToMin(e.end);
-          if (endMin <= startMin) endMin = startMin + 30; // garde-fou
+          if (endMin <= startMin) endMin = startMin + 30;
           events.push({ closer, name: e.name, startMin, endMin, uri: e.uri });
         }
       } else {
-        // Source 2 : slot grid (fallback — 1 slot = 30min)
+        // fallback slot grid
         const slots = data.users[closer]?.[di] || [];
         for (let si = 0; si < N; si++) {
-          const raw    = slots[si] || 'grey';
-          const status = applyEventTypeFilter(closer, di, raw, slotLabels[si], weekDays);
-          if (status === 'red') {
-            const startMin = strToMin(slotLabels[si]);
-            events.push({ closer, name: '', startMin, endMin: startMin + 30, uri: null });
+          const raw = slots[si] || 'grey';
+          const st  = applyEventTypeFilter(closer, di, raw, slotLabels[si], weekDays);
+          if (st === 'red') {
+            const sm = strToMin(slotLabels[si]);
+            events.push({ closer, name: '', startMin: sm, endMin: sm + 30, uri: null });
           }
         }
       }
@@ -651,20 +712,38 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
     return events;
   }
 
-  // ── HTML ──
+  // Pré-calcul de tous les events (pour stats + tooltips)
+  const allDayEvents = weekDays.map((_, di) => buildEvents(di));
+  const allWeekEvents = allDayEvents.flat();
+
+  // ── HTML ──────────────────────────────────────────────────────────────────
   const wrap = document.createElement('div');
   wrap.className = 'gcal-wrap';
 
-  // En-têtes
+  // En-tête avec compteur par jour
   const hdr = document.createElement('div');
   hdr.className = 'gcal-hdr';
-  const sp = document.createElement('div');
-  sp.className = 'gcal-time-spacer';
-  hdr.appendChild(sp);
-  dayLabels.forEach((d,i) => {
+  hdr.appendChild(Object.assign(document.createElement('div'), { className: 'gcal-time-spacer' }));
+
+  dayLabels.forEach((d, i) => {
+    const dayEvts = allDayEvents[i];
+    const cnt     = dayEvts.length;
     const h = document.createElement('div');
     h.className = 'gcal-day-hdr' + (i === todayIdx ? ' today' : '');
-    h.innerHTML = `<div class="day-abbr">${d.day}</div><span class="day-num">${d.date}</span>`;
+    h.innerHTML = `
+      <div class="day-abbr">${d.day}</div>
+      <span class="day-num">${d.date}</span>
+      ${cnt > 0
+        ? `<span class="gcal-day-count" data-di="${i}">${cnt} RDV</span>`
+        : `<span class="gcal-day-count empty">–</span>`}
+    `;
+    // Tooltip hover sur le compteur du jour
+    if (cnt > 0) {
+      const badge = h.querySelector('.gcal-day-count');
+      const tipHtml = buildEventsTipHtml(dayEvts, d.day + ' ' + d.date);
+      badge.addEventListener('mouseenter', ev => showTip(tipHtml, ev));
+      badge.addEventListener('mouseleave', hideTip);
+    }
     hdr.appendChild(h);
   });
   wrap.appendChild(hdr);
@@ -676,10 +755,9 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
   // Colonne heures
   const timeCol = document.createElement('div');
   timeCol.className = 'gcal-time-col';
-  slotLabels.forEach((label, si) => {
+  slotLabels.forEach(label => {
     const tick = document.createElement('div');
     tick.className = 'gcal-time-tick';
-    // N'affiche que les heures pleines
     tick.textContent = label.endsWith(':00') ? label : '';
     timeCol.appendChild(tick);
   });
@@ -694,39 +772,32 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
     col.className = 'gcal-day-col';
     col.style.minHeight = TOTAL_H + 'px';
 
-    // Lignes de fond
-    slotLabels.forEach((label, si) => {
+    slotLabels.forEach(label => {
       const line = document.createElement('div');
       line.className = 'gcal-slot-line' + (label.endsWith(':00') ? ' hour' : '');
       col.appendChild(line);
     });
 
-    // Blocs événements
-    const rawEvents  = buildEvents(di);
-    const laidEvents = assignGCalColumns(rawEvents);
+    const laidEvents = assignGCalColumns(allDayEvents[di]);
     for (const e of laidEvents) {
       const top    = (e.startMin - START_MIN) / 30 * GCAL_SLOT_H;
       const height = Math.max((e.endMin - e.startMin) / 30 * GCAL_SLOT_H - 2, 18);
       const left   = (e.col / e.totalCols * 100).toFixed(1);
       const width  = (100 / e.totalCols - 1).toFixed(1);
       const color  = colorMap[e.closer] || '#64748b';
+      const startLabel = slotLabels.find(l => strToMin(l) === e.startMin) || '';
 
       const block = document.createElement('div');
       block.className = 'gcal-event';
       block.style.cssText = `top:${top}px;height:${height}px;left:${left}%;width:${width}%;background:${color};`;
       block.innerHTML = `
         <div class="ev-closer">${getDisplayName(e.closer)}</div>
-        ${e.name ? `<div class="ev-type">${e.name}</div>` : ''}
-        ${height >= 44 ? `<div class="ev-time">${slotLabels.find(l=>strToMin(l)===e.startMin)||''}</div>` : ''}
+        ${e.name   ? `<div class="ev-type">${e.name}</div>` : ''}
+        ${height >= 44 ? `<div class="ev-time">${startLabel}</div>` : ''}
       `;
-      // Tooltip au survol
-      block.title = `${getDisplayName(e.closer)}${e.name ? ' · ' + e.name : ''}`;
-
-      // Clic → popup leads
       block.addEventListener('click', () => {
-        const date  = weekDays[di];
-        const label = slotLabels.find(l => strToMin(l) === e.startMin) || '';
-        if (date) openSlotPopup([e.closer], label, date, data);
+        const date = weekDays[di];
+        if (date) openSlotPopup([e.closer], startLabel, date, data);
       });
       col.appendChild(block);
     }
@@ -738,14 +809,27 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
   container.innerHTML = '';
   container.appendChild(wrap);
 
-  // Stats : compte les events distincts (pas les slots)
-  const totalEvents = weekDays.reduce((sum, _, di) => sum + buildEvents(di).length, 0);
+  // ── Stats avec tooltips ────────────────────────────────────────────────────
   const statsRow = document.getElementById('statsRow');
   if (statsRow) {
     statsRow.style.display = 'flex';
+    const weekTipHtml    = buildEventsTipHtml(allWeekEvents, 'Semaine');
+    const closersTipHtml = buildClosersTipHtml(allWeekEvents, effectiveOrder);
     statsRow.innerHTML = `
-      <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${effectiveOrder.length}</div></div>
-      <div class="stat-card"><div class="stat-label">RDV posés</div><div class="stat-value red">${totalEvents}</div></div>`;
+      <div class="stat-card" id="statClosers" style="cursor:default">
+        <div class="stat-label">Closers actifs</div>
+        <div class="stat-value">${effectiveOrder.length}</div>
+      </div>
+      <div class="stat-card" id="statRdv" style="cursor:default">
+        <div class="stat-label">RDV posés</div>
+        <div class="stat-value red">${allWeekEvents.length}</div>
+      </div>`;
+    const sc = document.getElementById('statClosers');
+    const sr = document.getElementById('statRdv');
+    sc.addEventListener('mouseenter', ev => showTip(closersTipHtml, ev));
+    sc.addEventListener('mouseleave', hideTip);
+    sr.addEventListener('mouseenter', ev => showTip(weekTipHtml, ev));
+    sr.addEventListener('mouseleave', hideTip);
   }
 }
 
@@ -1060,79 +1144,23 @@ function renderGrid(data) {
 
   document.getElementById('weekLabel').textContent = data.week_label;
 
-  // ── Vue Générale → Google Calendar ──────────────────────────────────────
-  if (isGeneral) {
-    // Calcule effectiveOrder (exclusions + filtre event type)
-    const allowedByEventType = (eventTypeFilter && eventTypeFilter !== 'all' && eventTypeMembers[eventTypeFilter]?.length)
-      ? new Set(eventTypeMembers[eventTypeFilter])
-      : null;
-    const effectiveOrder = data.user_order.filter(n =>
-      !excludedMembers.has(n) && (allowedByEventType === null || allowedByEventType.has(n))
-    );
-    // Remplace le contenu du conteneur parent (pas le calGrid CSS-grid)
-    // On utilise le calGrid comme zone de rendu
-    grid.style.display = 'block';
-    grid.style.background = 'transparent';
-    renderGeneralGCal(data, grid, effectiveOrder, weekDays, dayLabels, todayIdx);
-    return;
-  }
+  // Calcule effectiveOrder selon le mode
+  const allowedByEventType = (eventTypeFilter && eventTypeFilter !== 'all' && eventTypeMembers[eventTypeFilter]?.length)
+    ? new Set(eventTypeMembers[eventTypeFilter])
+    : null;
+  const effectiveOrder = isGeneral
+    ? data.user_order.filter(n => !excludedMembers.has(n) && (allowedByEventType === null || allowedByEventType.has(n)))
+    : [currentView];   // vue closer individuelle → 1 seul closer
 
-  // ── Vue individuelle → grille slots ─────────────────────────────────────
-  grid.style.display = '';
-  grid.style.background = '';
-  const gridData = data.users[currentView];
-  grid.innerHTML = '';
+  // ── Vue GCal (générale ET individuelle) ───────────────────────────────────
+  grid.style.display = 'block';
+  grid.style.background = 'transparent';
+  renderGeneralGCal(data, grid, effectiveOrder, weekDays, dayLabels, todayIdx);
 
-  // Coin vide
-  grid.appendChild(Object.assign(document.createElement('div'), { className: 'cal-header' }));
-
-  // En-têtes jours
-  dayLabels.forEach((d, i) => {
-    const h = document.createElement('div');
-    h.className = 'cal-header' + (i === todayIdx ? ' today' : '');
-    h.innerHTML = `${d.day}<div class="day-num">${d.date}</div>`;
-    grid.appendChild(h);
-  });
-
-  // Lignes de slots
-  data.slot_labels.forEach((label, si) => {
-    const tl = document.createElement('div');
-    tl.className = 'time-label';
-    tl.textContent = label;
-    grid.appendChild(tl);
-
-    for (let di = 0; di < 7; di++) {
-      const cell = document.createElement('div');
-      cell.className = 'slot';
-      if (!gridData) {
-        cell.classList.add('slot-grey');
-      } else {
-        // ── Vue individuelle ── RDV uniquement
-        const raw    = gridData[di][si];
-        const status = applyEventTypeFilter(currentView, di, raw, label, weekDays);
-        if (status === 'red') {
-          cell.classList.add('slot-red'); cell.textContent = 'RDV';
-          cell.style.cursor = 'pointer';
-          const _di = di, _label = label, _name = currentView;
-          cell.addEventListener('click', () => {
-            const date = weekDays[_di];
-            if (date) openSlotPopup([_name], _label, date, data);
-          });
-        } else {
-          cell.classList.add('slot-grey');
-        }
-      }
-      grid.appendChild(cell);
-    }
-  });
-
-  // Stats vue individuelle
-  {
-    let red = 0;
-    if (gridData) gridData.forEach(day => day.forEach(s => { if (s === 'red') red++; }));
-    const statsRow = document.getElementById('statsRow');
-    if (statsRow) statsRow.style.display = 'none';
-    document.getElementById('closerStats').textContent = `${red} RDV posés cette semaine`;
+  // Stats individuelle : label en dessous du topbar
+  if (!isGeneral) {
+    document.getElementById('closerStats').textContent = '';
+    // Le statsRow est déjà géré par renderGeneralGCal (compte les events du closer)
   }
 }
 
