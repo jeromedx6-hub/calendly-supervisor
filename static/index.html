@@ -1703,9 +1703,8 @@ function renderStatsEventChart(bookings) {
   const colors  = sorted.map((_,i) => palette[i % palette.length]);
   const ctx = document.getElementById('chartEvent');
   if (!ctx) return;
-  // Hauteur dynamique selon le nombre d'events
-  ctx.parentElement.style.minHeight = Math.max(200, sorted.length * 36) + 'px';
-  ctx.style.height = Math.max(200, sorted.length * 36) + 'px';
+  ctx.parentElement.style.minHeight = '';
+  ctx.style.height = '';
   statsCharts['event'] = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -1718,9 +1717,7 @@ function renderStatsEventChart(bookings) {
       }],
     },
     options: {
-      indexAxis: 'y',
       responsive: true,
-      maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: {
@@ -1728,8 +1725,8 @@ function renderStatsEventChart(bookings) {
         }}
       },
       scales: {
-        x: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } },
-        y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+        x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 35, minRotation: 20 } },
+        y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } }
       }
     }
   });
