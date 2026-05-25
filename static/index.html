@@ -378,12 +378,17 @@
       <option value="week" selected>Par semaine</option>
       <option value="month">Par mois</option>
     </select>
-    <label>Période</label>
-    <select id="statRange" onchange="reloadStats()">
-      <option value="1">1 mois</option>
-      <option value="3" selected>3 mois</option>
-      <option value="6">6 mois</option>
-      <option value="12">12 mois</option>
+    <label>Du</label>
+    <input type="date" id="statDateFrom" onchange="applyStatsFilters()"
+      style="height:32px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;color:#1e293b;padding:0 8px;font-size:12px;font-weight:500;cursor:pointer;outline:none;">
+    <label>Au</label>
+    <input type="date" id="statDateTo" onchange="applyStatsFilters()"
+      style="height:32px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;color:#1e293b;padding:0 8px;font-size:12px;font-weight:500;cursor:pointer;outline:none;">
+    <select id="statRange" onchange="reloadStats()" style="border-color:#94a3b8;color:#64748b;font-size:11px;">
+      <option value="1">Charger 1 mois</option>
+      <option value="3" selected>Charger 3 mois</option>
+      <option value="6">Charger 6 mois</option>
+      <option value="12">Charger 12 mois</option>
     </select>
     <label>Closer</label>
     <select id="statCloser" onchange="applyStatsFilters()">
@@ -1537,13 +1542,17 @@ function statsPeriodLabel(key, gran) {
   return `${DAYS_FR[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`;
 }
 
-// Filtre les bookings selon les selects
+// Filtre les bookings selon les selects + date range
 function statsFilterBookings(raw) {
-  const closer    = document.getElementById('statCloser')?.value || 'all';
-  const eventType = document.getElementById('statEvent')?.value  || 'all';
+  const closer    = document.getElementById('statCloser')?.value   || 'all';
+  const eventType = document.getElementById('statEvent')?.value    || 'all';
+  const dateFrom  = document.getElementById('statDateFrom')?.value || '';
+  const dateTo    = document.getElementById('statDateTo')?.value   || '';
   return raw.filter(b =>
     (closer    === 'all' || b.member_name === closer) &&
-    (eventType === 'all' || b.event_type  === eventType)
+    (eventType === 'all' || b.event_type  === eventType) &&
+    (!dateFrom || b.date >= dateFrom) &&
+    (!dateTo   || b.date <= dateTo)
   );
 }
 
@@ -1691,21 +1700,36 @@ function renderStatsEventChart(bookings) {
   bookings.forEach(b => { const k = b.event_type || 'Inconnu'; byEvent[k] = (byEvent[k]||0)+1; });
   const sorted = Object.entries(byEvent).sort((a,b) => b[1]-a[1]);
   const palette = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#14b8a6','#f97316','#a855f7'];
+  const colors  = sorted.map((_,i) => palette[i % palette.length]);
   const ctx = document.getElementById('chartEvent');
   if (!ctx) return;
+  // Hauteur dynamique selon le nombre d'events
+  ctx.parentElement.style.minHeight = Math.max(200, sorted.length * 36) + 'px';
+  ctx.style.height = Math.max(200, sorted.length * 36) + 'px';
   statsCharts['event'] = new Chart(ctx, {
-    type: 'doughnut',
+    type: 'bar',
     data: {
-      labels:   sorted.map(([n])=>n),
-      datasets: [{ data: sorted.map(([,c])=>c), backgroundColor: palette, borderWidth: 2, borderColor: '#fff' }],
+      labels:   sorted.map(([n]) => n),
+      datasets: [{
+        data:            sorted.map(([,c]) => c),
+        backgroundColor: colors,
+        borderRadius:    5,
+        borderWidth:     0,
+      }],
     },
     options: {
+      indexAxis: 'y',
       responsive: true,
+      maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 10 } },
+        legend: { display: false },
         tooltip: { callbacks: {
-          label: (ctx) => ` ${ctx.label}: ${ctx.raw} (${Math.round(ctx.raw/bookings.length*100)}%)`
+          label: (ctx) => ` ${ctx.raw} RDV (${bookings.length ? Math.round(ctx.raw/bookings.length*100) : 0}%)`
         }}
+      },
+      scales: {
+        x: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 } } }
       }
     }
   });
@@ -1733,6 +1757,14 @@ async function reloadStats() {
     const data = await r.json();
     statsRawData = data.bookings || [];
     statsPopulateFilters(statsRawData);
+    // Initialiser les date pickers sur la plage réelle des données
+    if (statsRawData.length) {
+      const dates  = statsRawData.map(b => b.date).sort();
+      const fromEl = document.getElementById('statDateFrom');
+      const toEl   = document.getElementById('statDateTo');
+      if (fromEl && !fromEl.value) fromEl.value = dates[0];
+      if (toEl   && !toEl.value)   toEl.value   = dates[dates.length - 1];
+    }
     applyStatsFilters();
   } catch(e) {
     document.getElementById('statsKpiRow').innerHTML = `<div class="stats-empty">⚠ Erreur de chargement : ${e.message}</div>`;
