@@ -548,27 +548,35 @@ def get_events_next7_data() -> dict:
 # ── Import historique vers Supabase ───────────────────────────────────────────
 def get_all_bookings_for_import(days_past: int = 90, days_future: int = 30) -> list:
     """
-    Retourne tous les RDV (passés + futurs) avec invités pour tous les membres.
-    Utilise ThreadPoolExecutor pour paralléliser les appels /invitees.
+    Retourne tous les RDV (passés + futurs) avec invités pour toute l'organisation.
+    Utilise le paramètre 'organization' (au lieu de 'user') pour récupérer tous les
+    membres même si le token n'a accès direct qu'à son propre compte.
     """
     now       = datetime.utcnow()
     start_utc = (now - timedelta(days=days_past)).strftime("%Y-%m-%dT00:00:00.000000Z")
     end_utc   = (now + timedelta(days=days_future)).strftime("%Y-%m-%dT23:59:59.000000Z")
 
+    org_uri     = get_org_info()["org_uri"]
     all_members = get_members()
-    raw_events  = []
+    # Construire un dict URI → name pour résoudre le membre depuis event_memberships
+    uri_to_name = {m["uri"]: m["name"] for m in all_members}
 
-    for m in all_members:
-        try:
-            events = api_get_all_pages(
-                f"{CALENDLY_BASE}/scheduled_events",
-                {"user": m["uri"], "status": "active",
-                 "min_start_time": start_utc, "max_start_time": end_utc}
-            )
-            for e in events:
-                raw_events.append((m["name"], e))
-        except Exception as ex:
-            print(f"[import] {m['name']}: {ex}")
+    raw_events = []
+    try:
+        events = api_get_all_pages(
+            f"{CALENDLY_BASE}/scheduled_events",
+            {"organization": org_uri, "status": "active",
+             "min_start_time": start_utc, "max_start_time": end_utc}
+        )
+        for e in events:
+            memberships = e.get("event_memberships", [])
+            member_name = ""
+            if memberships:
+                user_uri    = memberships[0].get("user", "")
+                member_name = uri_to_name.get(user_uri, memberships[0].get("user_name", ""))
+            raw_events.append((member_name, e))
+    except Exception as ex:
+        print(f"[import] org query error: {ex}")
 
     def build_booking(member_name_event):
         member_name, e = member_name_event
