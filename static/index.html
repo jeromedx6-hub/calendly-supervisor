@@ -597,9 +597,47 @@ function recomputeGeneralGrid(data) {
   const order = data.user_order.filter(n =>
     !excludedMembers.has(n) && (allowedByEventType === null || allowedByEventType.has(n))
   );
+
+  // Paramètres de filtrage avancé pour l'event type sélectionné
+  const isFiltered    = eventTypeFilter && eventTypeFilter !== 'all';
+  const evtDuration   = isFiltered ? (eventTypeDurations[eventTypeFilter] || 30) : 30;
+  const slotsNeeded   = Math.ceil(evtDuration / 30);  // nb de créneaux 30min consécutifs requis
+  // Délai minimum : 24h par défaut (en nombre de créneaux de 30min depuis maintenant)
+  const nowParis      = new Date(Date.now() + 2 * 3600000); // UTC+2
+  const minNoticeMs   = (parseInt(localStorage.getItem('calendly_min_notice_h') || '24')) * 3600000;
   const weekDays = data.week_days || [];
   const nDays    = 7, nSlots = data.slot_labels.length;
   const grid     = [];
+
+  // Helper : est-ce que le slot (di, si) est dans le délai minimum ?
+  function isPastNotice(di, si) {
+    if (!isFiltered || minNoticeMs <= 0) return false;
+    const dateStr = weekDays[di];
+    if (!dateStr) return false;
+    const label = data.slot_labels[si];
+    const [h, m] = label.split(':').map(Number);
+    const slotTime = new Date(dateStr + 'T00:00:00');
+    slotTime.setHours(h, m, 0, 0);
+    return (slotTime.getTime() - nowParis.getTime()) < minNoticeMs;
+  }
+
+  // Helper : est-ce que le slot (di, si) peut accueillir la durée complète de l'event ?
+  function hasEnoughConsecutiveSlots(di, si, memberStatuses2d) {
+    if (!isFiltered || slotsNeeded <= 1) return true;
+    // Vérifie que les slotsNeeded suivants ont au moins 1 closer libre
+    for (let k = 0; k < slotsNeeded; k++) {
+      const sik = si + k;
+      if (sik >= nSlots) return false;
+      const futStatuses = order.map(n => {
+        const raw = data.users[n]?.[di]?.[sik] || 'grey';
+        return applyEventTypeFilter(n, di, raw, data.slot_labels[sik], weekDays);
+      });
+      const hasFree = futStatuses.some(s => s === 'green');
+      if (!hasFree) return false;
+    }
+    return true;
+  }
+
   for (let di = 0; di < nDays; di++) {
     const day = [];
     for (let si = 0; si < nSlots; si++) {
@@ -609,12 +647,21 @@ function recomputeGeneralGrid(data) {
         return applyEventTypeFilter(n, di, raw, label, weekDays);
       });
       const booked = statuses.filter(s => s === 'red').length;
-      const free   = statuses.filter(s => s === 'green').length;
+      let   free   = statuses.filter(s => s === 'green').length;
       const total  = booked + free;
-      if (total === 0)      day.push({color:'grey',   label:'',                    booked:0,      free:0});
-      else if (free === 0)  day.push({color:'red',    label:`${booked}/${total}`,  booked,        free:0});
-      else if (free === 1)  day.push({color:'orange', label:`${booked}/${total}`,  booked,        free:1});
-      else                  day.push({color:'green',  label:`${booked}/${total}`,  booked,        free});
+
+      // Filtres avancés (délai min + durée) pour l'event type sélectionné
+      if (isFiltered && free > 0) {
+        if (isPastNotice(di, si) || !hasEnoughConsecutiveSlots(di, si, null)) {
+          free = 0;
+        }
+      }
+
+      const effectiveTotal = booked + free;
+      if (effectiveTotal === 0 && booked === 0) day.push({color:'grey',   label:'',                       booked:0,     free:0});
+      else if (free === 0)                       day.push({color:'red',    label:`${booked}/${total}`,     booked,       free:0});
+      else if (free === 1)                       day.push({color:'orange', label:`${booked}/${total}`,     booked,       free:1});
+      else                                       day.push({color:'green',  label:`${booked}/${total}`,     booked,       free});
     }
     grid.push(day);
   }
@@ -649,10 +696,11 @@ async function fetchMembers() {
 }
 
 // ── Charger les noms d'event types depuis l'API (une fois au démarrage) ───
-let eventTypeUrls    = {};  // name → scheduling_url
-let eventTypeUris    = {};  // name → [uri, ...]  (un par membre pour les round-robin)
-let eventTypeMembers = {};  // name → [member_name, ...]
-let realAvailCache   = {};  // ckey → {date: [slots]}
+let eventTypeUrls      = {};  // name → scheduling_url
+let eventTypeUris      = {};  // name → [uri, ...]
+let eventTypeMembers   = {};  // name → [member_name, ...]
+let eventTypeDurations = {};  // name → duration (minutes)
+let realAvailCache     = {};  // ckey → {date: [slots]}
 
 async function loadEventTypeNames() {
   try {
@@ -668,9 +716,10 @@ async function loadEventTypeNames() {
     eventTypeMembers = {};
     items.forEach(i => {
       if (typeof i === 'object' && i.name) {
-        eventTypeUrls[i.name]    = i.url     || '';
-        eventTypeUris[i.name]    = Array.isArray(i.uris) ? i.uris : (i.uri ? [i.uri] : []);
-        eventTypeMembers[i.name] = i.members || [];
+        eventTypeUrls[i.name]      = i.url      || '';
+        eventTypeUris[i.name]      = Array.isArray(i.uris) ? i.uris : (i.uri ? [i.uri] : []);
+        eventTypeMembers[i.name]   = i.members  || [];
+        eventTypeDurations[i.name] = i.duration || 30;
       }
     });
     allEventTypeNames = names;
@@ -880,9 +929,6 @@ function renderGrid(data) {
     effectiveOrder   = r.user_order;
   }
 
-  // Si un event type est sélectionné et qu'on a la vraie dispo Calendly → l'utiliser
-  const realAvail = isGeneral ? getRealAvailSlots() : null;
-
   const gridData  = isGeneral ? effectiveGeneral : data.users[currentView];
   const weekDays  = data.week_days || [];
   const dayLabels = getWeekDayLabels(weekDays);
@@ -921,26 +967,10 @@ function renderGrid(data) {
         const dateStr  = weekDays[di] || '';
 
         // Si on a la vraie dispo Calendly pour cet event type → remplacer la couleur
-        if (realAvail !== null) {
-          const daySlots = realAvail[dateStr] || [];
-          const isRealAvail = daySlots.includes(label);
-          // Garder les rouges (RDV posés) depuis la grille calculée
-          if (slot.color === 'red') {
-            cell.classList.add('slot-red'); cell.textContent = slot.label;
-          } else if (isRealAvail) {
-            cell.classList.add('slot-green'); cell.textContent = '✓';
-          } else if (slot.color !== 'grey') {
-            // Hors horaires ou créneau non proposé par Calendly
-            cell.classList.add('slot-grey');
-          } else {
-            cell.classList.add('slot-grey');
-          }
-        } else {
-          if      (slot.color === 'green')  { cell.classList.add('slot-green');  cell.textContent = slot.label; }
-          else if (slot.color === 'orange') { cell.classList.add('slot-orange'); cell.textContent = slot.label; }
-          else if (slot.color === 'red')    { cell.classList.add('slot-red');    cell.textContent = slot.label; }
-          else                              { cell.classList.add('slot-grey'); }
-        }
+        if      (slot.color === 'green')  { cell.classList.add('slot-green');  cell.textContent = slot.label; }
+        else if (slot.color === 'orange') { cell.classList.add('slot-orange'); cell.textContent = slot.label; }
+        else if (slot.color === 'red')    { cell.classList.add('slot-red');    cell.textContent = slot.label; }
+        else                              { cell.classList.add('slot-grey'); }
 
         if (slot.color !== 'grey') {
           const booked = effectiveOrder.filter(n => data.users[n]?.[di]?.[si] === 'red');

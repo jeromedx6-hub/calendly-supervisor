@@ -362,7 +362,11 @@ def get_all_event_type_names() -> list:
                 if not n:
                     continue
                 if n not in types:
-                    types[n] = {"url": e.get("scheduling_url", ""), "uris": []}
+                    types[n] = {
+                        "url":      e.get("scheduling_url", ""),
+                        "uris":     [],
+                        "duration": e.get("duration", 30),  # durée en minutes
+                    }
                     members_by_type[n] = []
                 uri = e.get("uri", "")
                 if uri and uri not in types[n]["uris"]:
@@ -372,7 +376,8 @@ def get_all_event_type_names() -> list:
         except Exception:
             pass
 
-    result = [{"name": n, "url": types[n]["url"], "uris": types[n]["uris"], "members": members_by_type.get(n, [])} for n in sorted(types)]
+    result = [{"name": n, "url": types[n]["url"], "uris": types[n]["uris"],
+               "duration": types[n]["duration"], "members": members_by_type.get(n, [])} for n in sorted(types)]
     cache_set(ckey, result, ttl=3600)   # 1h — les event types changent rarement
     return result
 
