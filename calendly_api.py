@@ -352,7 +352,7 @@ def get_all_event_type_names() -> list:
     if not members:
         members = all_members
 
-    types   = {}  # name → {url, uri}
+    types        = {}  # name → {url, uris: [per-member URI, ...]}
     members_by_type = {}  # name → [member_name, ...]
     for m in members:
         try:
@@ -362,37 +362,28 @@ def get_all_event_type_names() -> list:
                 if not n:
                     continue
                 if n not in types:
-                    types[n] = {
-                        "url": e.get("scheduling_url", ""),
-                        "uri": e.get("uri", ""),
-                    }
+                    types[n] = {"url": e.get("scheduling_url", ""), "uris": []}
                     members_by_type[n] = []
+                uri = e.get("uri", "")
+                if uri and uri not in types[n]["uris"]:
+                    types[n]["uris"].append(uri)
                 if m["name"] not in members_by_type[n]:
                     members_by_type[n].append(m["name"])
         except Exception:
             pass
 
-    result = [{"name": n, "url": types[n]["url"], "uri": types[n]["uri"], "members": members_by_type.get(n, [])} for n in sorted(types)]
+    result = [{"name": n, "url": types[n]["url"], "uris": types[n]["uris"], "members": members_by_type.get(n, [])} for n in sorted(types)]
     cache_set(ckey, result, ttl=3600)   # 1h — les event types changent rarement
     return result
 
 # ── Créneaux réels d'un event type (logique Calendly native) ─────────────────
-def get_event_type_available_times(event_type_uri: str, start_utc: str, end_utc: str) -> list:
-    """
-    Retourne les vrais créneaux disponibles pour un event type via l'API Calendly.
-    Prend en compte : durée, buffer, délai minimum, limite de RDV/jour.
-    Retourne une liste de "HH:MM" (heure Paris) groupés par date : {date: [slots]}
-    """
-    ckey = f"avail_{event_type_uri.split('/')[-1]}_{start_utc[:10]}_{end_utc[:10]}"
-    cached = cache_get(ckey)
-    if cached is not None:
-        return cached
-
+def _fetch_available_times_for_uri(uri: str, start_utc: str, end_utc: str) -> dict:
+    """Récupère les créneaux disponibles pour UN uri d'event type spécifique."""
     try:
         data = api_get(f"{CALENDLY_BASE}/event_type_available_times", {
-            "event_type":  event_type_uri,
-            "start_time":  start_utc,
-            "end_time":    end_utc,
+            "event_type": uri,
+            "start_time": start_utc,
+            "end_time":   end_utc,
         })
         slots_by_date = {}
         for item in data.get("collection", []):
@@ -404,14 +395,37 @@ def get_event_type_available_times(event_type_uri: str, start_utc: str, end_utc:
             dt_paris = parse_dt_paris(st)
             date_str = dt_paris.strftime("%Y-%m-%d")
             time_str = dt_paris.strftime("%H:%M")
-            slots_by_date.setdefault(date_str, [])
-            if time_str not in slots_by_date[date_str]:
-                slots_by_date[date_str].append(time_str)
-        result = slots_by_date
+            slots_by_date.setdefault(date_str, set())
+            slots_by_date[date_str].add(time_str)
+        return {d: sorted(list(s)) for d, s in slots_by_date.items()}
     except Exception as ex:
-        print(f"[available_times] {ex}")
-        result = {}
+        print(f"[available_times] {uri.split('/')[-1]}: {ex}")
+        return {}
 
+def get_event_type_available_times(event_type_uris, start_utc: str, end_utc: str) -> dict:
+    """
+    Retourne les vrais créneaux disponibles pour un event type via l'API Calendly.
+    Accepte un URI string OU une liste d'URIs (round-robin → union des dispos).
+    Prend en compte : durée, buffer, délai minimum, limite de RDV/jour.
+    Retourne : {date: [slots_HH:MM]}
+    """
+    if isinstance(event_type_uris, str):
+        event_type_uris = [event_type_uris]
+
+    uris_key = "_".join(u.split("/")[-1] for u in event_type_uris[:3])
+    ckey = f"avail_{uris_key}_{start_utc[:10]}_{end_utc[:10]}"
+    cached = cache_get(ckey)
+    if cached is not None:
+        return cached
+
+    merged = {}
+    for uri in event_type_uris:
+        for date_str, times in _fetch_available_times_for_uri(uri, start_utc, end_utc).items():
+            if date_str not in merged:
+                merged[date_str] = set()
+            merged[date_str].update(times)
+
+    result = {d: sorted(list(s)) for d, s in merged.items()}
     cache_set(ckey, result, ttl=900)  # 15 min — la dispo change souvent
     return result
 

@@ -566,14 +566,15 @@ async function setEventTypeFilter(val) {
 }
 
 async function loadRealAvailability(eventTypeName) {
-  const uri = eventTypeUris[eventTypeName];
-  if (!uri) return;
-  const ckey = uri + '_' + (next7Mode ? 'next7' : weekOffset);
+  const uris = eventTypeUris[eventTypeName];
+  if (!uris || !uris.length) return;
+  const ckey = eventTypeName + '_' + (next7Mode ? 'next7' : weekOffset);
   if (realAvailCache[ckey]) return;  // déjà chargé
   try {
+    const urisParam = uris.map(encodeURIComponent).join(',');
     const params = next7Mode
-      ? `event_type_uri=${encodeURIComponent(uri)}&next7=true`
-      : `event_type_uri=${encodeURIComponent(uri)}&week_offset=${weekOffset}`;
+      ? `event_type_uris=${urisParam}&next7=true`
+      : `event_type_uris=${urisParam}&week_offset=${weekOffset}`;
     const r = await fetch(`/api/event_available_times?${params}`);
     if (r.ok) realAvailCache[ckey] = await r.json();
   } catch(e) { /* silencieux */ }
@@ -581,9 +582,9 @@ async function loadRealAvailability(eventTypeName) {
 
 function getRealAvailSlots() {
   if (!eventTypeFilter || eventTypeFilter === 'all') return null;
-  const uri  = eventTypeUris[eventTypeFilter];
-  if (!uri) return null;
-  const ckey = uri + '_' + (next7Mode ? 'next7' : weekOffset);
+  const uris = eventTypeUris[eventTypeFilter];
+  if (!uris || !uris.length) return null;
+  const ckey = eventTypeFilter + '_' + (next7Mode ? 'next7' : weekOffset);
   return realAvailCache[ckey] || null;
 }
 
@@ -649,9 +650,9 @@ async function fetchMembers() {
 
 // ── Charger les noms d'event types depuis l'API (une fois au démarrage) ───
 let eventTypeUrls    = {};  // name → scheduling_url
-let eventTypeUris    = {};  // name → event_type_uri
+let eventTypeUris    = {};  // name → [uri, ...]  (un par membre pour les round-robin)
 let eventTypeMembers = {};  // name → [member_name, ...]
-let realAvailCache   = {};  // event_type_uri+key → {date: [slots]}
+let realAvailCache   = {};  // ckey → {date: [slots]}
 
 async function loadEventTypeNames() {
   try {
@@ -668,7 +669,7 @@ async function loadEventTypeNames() {
     items.forEach(i => {
       if (typeof i === 'object' && i.name) {
         eventTypeUrls[i.name]    = i.url     || '';
-        eventTypeUris[i.name]    = i.uri     || '';
+        eventTypeUris[i.name]    = Array.isArray(i.uris) ? i.uris : (i.uri ? [i.uri] : []);
         eventTypeMembers[i.name] = i.members || [];
       }
     });
