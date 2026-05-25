@@ -535,6 +535,52 @@ def get_slot_invitees(member_name: str, date: str, time: str) -> dict:
     return result
 
 
+def _build_events_by_member_org(start_utc, end_utc, members):
+    """
+    Requête organisation pour récupérer les événements de TOUS les membres
+    (même ceux qui ne sont pas le propriétaire du token).
+    """
+    all_members = get_members()
+    uri_to_name = {m["uri"]: m["name"] for m in all_members}
+    member_names = {m["name"] for m in members}
+
+    events_by_member = {m["name"]: [] for m in members}
+    try:
+        org_uri = get_org_info()["org_uri"]
+        all_events = api_get_all_pages(
+            f"{CALENDLY_BASE}/scheduled_events",
+            {"organization": org_uri, "status": "active",
+             "min_start_time": start_utc, "max_start_time": end_utc}
+        )
+        for e in all_events:
+            memberships = e.get("event_memberships", [])
+            if not memberships:
+                continue
+            user_uri    = memberships[0].get("user", "")
+            member_name = uri_to_name.get(user_uri, memberships[0].get("user_name", ""))
+            if member_name not in member_names:
+                continue
+            try:
+                s = parse_dt_paris(e["start_time"])
+                f = parse_dt_paris(e["end_time"])
+                events_by_member[member_name].append({
+                    "name":     e.get("name", "RDV"),
+                    "start":    s.strftime("%H:%M"),
+                    "end":      f.strftime("%H:%M"),
+                    "date":     s.strftime("%Y-%m-%d"),
+                    "duration": int((f - s).total_seconds() / 60),
+                    "uri":      e.get("uri", ""),
+                })
+            except Exception:
+                pass
+    except Exception as ex:
+        print(f"[events_org] error: {ex}")
+
+    for name in events_by_member:
+        events_by_member[name].sort(key=lambda x: (x["date"], x["start"]))
+    return events_by_member
+
+
 def get_events_week_data(week_offset: int) -> dict:
     ckey = f"events_{week_offset}"
     cached = cache_get(ckey)
@@ -552,9 +598,7 @@ def get_events_week_data(week_offset: int) -> dict:
     if not members:
         members = all_members
 
-    events_by_member = {}
-    for m in members:
-        events_by_member[m["name"]] = get_scheduled_events(m["uri"], start_utc, end_utc)
+    events_by_member = _build_events_by_member_org(start_utc, end_utc, members)
 
     week_days = [(monday + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
     day_labels = []
@@ -591,9 +635,7 @@ def get_events_next7_data() -> dict:
     if not members:
         members = all_members
 
-    events_by_member = {}
-    for m in members:
-        events_by_member[m["name"]] = get_scheduled_events(m["uri"], start_utc, end_utc)
+    events_by_member = _build_events_by_member_org(start_utc, end_utc, members)
 
     FR_DAYS_LONG = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"]
     week_days  = [(today + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]

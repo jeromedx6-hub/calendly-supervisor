@@ -146,6 +146,28 @@
   .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
   @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
+  /* ── Google Calendar View ──────────────────────────────────────────── */
+  .gcal-wrap { display:flex; flex-direction:column; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.06); min-width:760px; }
+  .gcal-hdr { display:flex; border-bottom:2px solid #e2e8f0; background:#0f172a; position:sticky; top:0; z-index:3; }
+  .gcal-time-spacer { width:52px; flex-shrink:0; border-right:2px solid #1e293b; }
+  .gcal-day-hdr { flex:1; text-align:center; padding:8px 4px 6px; border-left:1px solid #1e293b; cursor:default; }
+  .gcal-day-hdr .day-abbr { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:#94a3b8; }
+  .gcal-day-hdr .day-num  { font-size:20px; font-weight:700; color:#fff; line-height:1.2; display:block; margin-top:1px; }
+  .gcal-day-hdr.today .day-num { background:#3b82f6; color:#fff; border-radius:50%; width:32px; height:32px; line-height:32px; margin:1px auto 0; display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .gcal-body { display:flex; overflow-y:auto; max-height:540px; position:relative; }
+  .gcal-time-col { width:52px; flex-shrink:0; border-right:2px solid #e2e8f0; background:#fff; }
+  .gcal-time-tick { height:36px; display:flex; align-items:flex-start; justify-content:flex-end; padding:0 8px 0 0; font-size:10px; color:#94a3b8; margin-top:-6px; white-space:nowrap; }
+  .gcal-time-tick:first-child { margin-top:0; }
+  .gcal-days { flex:1; display:grid; grid-template-columns:repeat(7, 1fr); }
+  .gcal-day-col { position:relative; border-left:1px solid #e2e8f0; }
+  .gcal-slot-line { height:36px; border-bottom:1px solid #f1f5f9; box-sizing:border-box; }
+  .gcal-slot-line.hour { border-bottom-color:#e2e8f0; }
+  .gcal-event { position:absolute; border-radius:5px; overflow:hidden; padding:3px 5px; cursor:pointer; box-sizing:border-box; transition:filter .12s,box-shadow .12s; }
+  .gcal-event:hover { filter:brightness(.9); box-shadow:0 2px 8px rgba(0,0,0,.2); z-index:10; }
+  .gcal-event .ev-closer { font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:10px; line-height:1.3; }
+  .gcal-event .ev-type { color:rgba(255,255,255,.82); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:9px; line-height:1.2; margin-top:1px; }
+  .gcal-event .ev-time { color:rgba(255,255,255,.7); font-size:9px; line-height:1.2; }
+
   /* ── Diagnostic ── */
   .diag-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
   .diag-table th { background: #0f172a; color: #94a3b8; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 14px; text-align: left; }
@@ -559,6 +581,174 @@ async function setEventTypeFilter(val) {
   if (data) renderGrid(data);
 }
 
+// ── Google Calendar renderer ───────────────────────────────────────────────
+const GCAL_SLOT_H  = 36;   // px par slot de 30min
+const GCAL_START_H = 8;    // heure de début (08:00)
+const CLOSER_COLORS = [
+  '#ef4444','#f97316','#eab308','#22c55e',
+  '#06b6d4','#3b82f6','#8b5cf6','#ec4899',
+  '#14b8a6','#f59e0b','#84cc16','#a855f7'
+];
+
+function strToMin(t) { const [h,m] = t.split(':').map(Number); return h*60+m; }
+
+function assignGCalColumns(events) {
+  if (!events.length) return events;
+  const sorted = [...events].sort((a,b) => a.startMin - b.startMin || b.endMin - a.endMin);
+  const colEnds = [];
+  sorted.forEach(e => {
+    let c = colEnds.findIndex(end => end <= e.startMin);
+    if (c === -1) { c = colEnds.length; colEnds.push(0); }
+    e.col = c;
+    colEnds[c] = e.endMin;
+  });
+  sorted.forEach(e => {
+    const overlapping = sorted.filter(f => f !== e && f.startMin < e.endMin && f.endMin > e.startMin);
+    e.totalCols = overlapping.reduce((mx,f) => Math.max(mx, f.col+1), e.col+1);
+  });
+  return sorted;
+}
+
+function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels, todayIdx) {
+  const evByMember = eventsCache?.events_by_member || {};
+  const slotLabels = data.slot_labels || [];
+  const N = slotLabels.length;
+  const TOTAL_H = N * GCAL_SLOT_H;
+  const START_MIN = GCAL_START_H * 60;
+
+  // Couleur par closer (stable selon sa position dans effectiveOrder)
+  const allOrder = data.user_order || [];
+  const colorMap = {};
+  allOrder.forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+
+  // Construit la liste d'events pour un jour donné
+  function buildEvents(di) {
+    const dateStr = weekDays[di];
+    const events  = [];
+    for (const closer of effectiveOrder) {
+      // Source 1 : eventsCache (données réelles avec durée)
+      const cached = (evByMember[closer] || []).filter(e => e.date === dateStr);
+      if (cached.length) {
+        for (const e of cached) {
+          const startMin = strToMin(e.start);
+          let   endMin   = strToMin(e.end);
+          if (endMin <= startMin) endMin = startMin + 30; // garde-fou
+          events.push({ closer, name: e.name, startMin, endMin, uri: e.uri });
+        }
+      } else {
+        // Source 2 : slot grid (fallback — 1 slot = 30min)
+        const slots = data.users[closer]?.[di] || [];
+        for (let si = 0; si < N; si++) {
+          const raw    = slots[si] || 'grey';
+          const status = applyEventTypeFilter(closer, di, raw, slotLabels[si], weekDays);
+          if (status === 'red') {
+            const startMin = strToMin(slotLabels[si]);
+            events.push({ closer, name: '', startMin, endMin: startMin + 30, uri: null });
+          }
+        }
+      }
+    }
+    return events;
+  }
+
+  // ── HTML ──
+  const wrap = document.createElement('div');
+  wrap.className = 'gcal-wrap';
+
+  // En-têtes
+  const hdr = document.createElement('div');
+  hdr.className = 'gcal-hdr';
+  const sp = document.createElement('div');
+  sp.className = 'gcal-time-spacer';
+  hdr.appendChild(sp);
+  dayLabels.forEach((d,i) => {
+    const h = document.createElement('div');
+    h.className = 'gcal-day-hdr' + (i === todayIdx ? ' today' : '');
+    h.innerHTML = `<div class="day-abbr">${d.day}</div><span class="day-num">${d.date}</span>`;
+    hdr.appendChild(h);
+  });
+  wrap.appendChild(hdr);
+
+  // Corps
+  const body = document.createElement('div');
+  body.className = 'gcal-body';
+
+  // Colonne heures
+  const timeCol = document.createElement('div');
+  timeCol.className = 'gcal-time-col';
+  slotLabels.forEach((label, si) => {
+    const tick = document.createElement('div');
+    tick.className = 'gcal-time-tick';
+    // N'affiche que les heures pleines
+    tick.textContent = label.endsWith(':00') ? label : '';
+    timeCol.appendChild(tick);
+  });
+  body.appendChild(timeCol);
+
+  // Colonnes jours
+  const daysArea = document.createElement('div');
+  daysArea.className = 'gcal-days';
+
+  for (let di = 0; di < 7; di++) {
+    const col = document.createElement('div');
+    col.className = 'gcal-day-col';
+    col.style.minHeight = TOTAL_H + 'px';
+
+    // Lignes de fond
+    slotLabels.forEach((label, si) => {
+      const line = document.createElement('div');
+      line.className = 'gcal-slot-line' + (label.endsWith(':00') ? ' hour' : '');
+      col.appendChild(line);
+    });
+
+    // Blocs événements
+    const rawEvents  = buildEvents(di);
+    const laidEvents = assignGCalColumns(rawEvents);
+    for (const e of laidEvents) {
+      const top    = (e.startMin - START_MIN) / 30 * GCAL_SLOT_H;
+      const height = Math.max((e.endMin - e.startMin) / 30 * GCAL_SLOT_H - 2, 18);
+      const left   = (e.col / e.totalCols * 100).toFixed(1);
+      const width  = (100 / e.totalCols - 1).toFixed(1);
+      const color  = colorMap[e.closer] || '#64748b';
+
+      const block = document.createElement('div');
+      block.className = 'gcal-event';
+      block.style.cssText = `top:${top}px;height:${height}px;left:${left}%;width:${width}%;background:${color};`;
+      block.innerHTML = `
+        <div class="ev-closer">${getDisplayName(e.closer)}</div>
+        ${e.name ? `<div class="ev-type">${e.name}</div>` : ''}
+        ${height >= 44 ? `<div class="ev-time">${slotLabels.find(l=>strToMin(l)===e.startMin)||''}</div>` : ''}
+      `;
+      // Tooltip au survol
+      block.title = `${getDisplayName(e.closer)}${e.name ? ' · ' + e.name : ''}`;
+
+      // Clic → popup leads
+      block.addEventListener('click', () => {
+        const date  = weekDays[di];
+        const label = slotLabels.find(l => strToMin(l) === e.startMin) || '';
+        if (date) openSlotPopup([e.closer], label, date, data);
+      });
+      col.appendChild(block);
+    }
+    daysArea.appendChild(col);
+  }
+
+  body.appendChild(daysArea);
+  wrap.appendChild(body);
+  container.innerHTML = '';
+  container.appendChild(wrap);
+
+  // Stats : compte les events distincts (pas les slots)
+  const totalEvents = weekDays.reduce((sum, _, di) => sum + buildEvents(di).length, 0);
+  const statsRow = document.getElementById('statsRow');
+  if (statsRow) {
+    statsRow.style.display = 'flex';
+    statsRow.innerHTML = `
+      <div class="stat-card"><div class="stat-label">Closers actifs</div><div class="stat-value">${effectiveOrder.length}</div></div>
+      <div class="stat-card"><div class="stat-label">RDV posés</div><div class="stat-value red">${totalEvents}</div></div>`;
+  }
+}
+
 async function loadRealAvailability(eventTypeName) {
   const uris = eventTypeUris[eventTypeName];
   if (!uris || !uris.length) return;
@@ -864,23 +1054,33 @@ async function openSlotPopup(closerNames, slotLabel, date, data) {
 function renderGrid(data) {
   const grid      = document.getElementById('calGrid');
   const isGeneral = currentView === 'general';
-
-  // Toujours recomputer la grille générale (mode RDV uniquement)
-  const needsRecompute = isGeneral;
-  let effectiveGeneral = data.general;
-  let effectiveOrder   = data.user_order;
-  if (needsRecompute) {
-    const r = recomputeGeneralGrid(data);
-    effectiveGeneral = r.grid;
-    effectiveOrder   = r.user_order;
-  }
-
-  const gridData  = isGeneral ? effectiveGeneral : data.users[currentView];
   const weekDays  = data.week_days || [];
   const dayLabels = getWeekDayLabels(weekDays);
   const todayIdx  = getTodayIdx(weekDays);
 
   document.getElementById('weekLabel').textContent = data.week_label;
+
+  // ── Vue Générale → Google Calendar ──────────────────────────────────────
+  if (isGeneral) {
+    // Calcule effectiveOrder (exclusions + filtre event type)
+    const allowedByEventType = (eventTypeFilter && eventTypeFilter !== 'all' && eventTypeMembers[eventTypeFilter]?.length)
+      ? new Set(eventTypeMembers[eventTypeFilter])
+      : null;
+    const effectiveOrder = data.user_order.filter(n =>
+      !excludedMembers.has(n) && (allowedByEventType === null || allowedByEventType.has(n))
+    );
+    // Remplace le contenu du conteneur parent (pas le calGrid CSS-grid)
+    // On utilise le calGrid comme zone de rendu
+    grid.style.display = 'block';
+    grid.style.background = 'transparent';
+    renderGeneralGCal(data, grid, effectiveOrder, weekDays, dayLabels, todayIdx);
+    return;
+  }
+
+  // ── Vue individuelle → grille slots ─────────────────────────────────────
+  grid.style.display = '';
+  grid.style.background = '';
+  const gridData = data.users[currentView];
   grid.innerHTML = '';
 
   // Coin vide
@@ -904,40 +1104,8 @@ function renderGrid(data) {
     for (let di = 0; di < 7; di++) {
       const cell = document.createElement('div');
       cell.className = 'slot';
-
       if (!gridData) {
         cell.classList.add('slot-grey');
-      } else if (isGeneral) {
-        // ── Vue Générale ──
-        const slot     = gridData[di][si];
-        const dateStr  = weekDays[di] || '';
-
-        // Si on a la vraie dispo Calendly pour cet event type → remplacer la couleur
-        if      (slot.color === 'green')  { cell.classList.add('slot-green');  cell.textContent = slot.label; }
-        else if (slot.color === 'orange') { cell.classList.add('slot-orange'); cell.textContent = slot.label; }
-        else if (slot.color === 'red')    { cell.classList.add('slot-red');    cell.textContent = slot.label; }
-        else                              { cell.classList.add('slot-grey'); }
-
-        if (slot.color !== 'grey') {
-          // Recalcul des closers réellement bookés via applyEventTypeFilter
-          // (même logique que recomputeGeneralGrid → cohérence count / tooltip)
-          const bookedNames = effectiveOrder.filter(n => {
-            const raw = data.users[n]?.[di]?.[si] || 'grey';
-            return applyEventTypeFilter(n, di, raw, label, weekDays) === 'red';
-          });
-          if (bookedNames.length) {
-            cell.dataset.tip = bookedNames.map(getDisplayName).join('\n');
-          }
-          // Click sur un slot rouge → popup avec leads
-          if (slot.color === 'red') {
-            cell.style.cursor = 'pointer';
-            const _di = di, _label = label, _booked = bookedNames.slice();
-            cell.addEventListener('click', () => {
-              const date = weekDays[_di];
-              if (date) openSlotPopup(_booked, _label, date, data);
-            });
-          }
-        }
       } else {
         // ── Vue individuelle ── RDV uniquement
         const raw    = gridData[di][si];
@@ -954,12 +1122,18 @@ function renderGrid(data) {
           cell.classList.add('slot-grey');
         }
       }
-
       grid.appendChild(cell);
     }
   });
 
-  updateStats(isGeneral, gridData, data, effectiveOrder);
+  // Stats vue individuelle
+  {
+    let red = 0;
+    if (gridData) gridData.forEach(day => day.forEach(s => { if (s === 'red') red++; }));
+    const statsRow = document.getElementById('statsRow');
+    if (statsRow) statsRow.style.display = 'none';
+    document.getElementById('closerStats').textContent = `${red} RDV posés cette semaine`;
+  }
 }
 
 function updateStats(isGeneral, gridData, data, effectiveOrder) {
