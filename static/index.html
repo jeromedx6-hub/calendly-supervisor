@@ -262,7 +262,45 @@
     .grid-container { padding: 0; }
     .cal-grid { box-shadow: none; }
   }
+
+  /* ── Stats page ── */
+  #statsArea { display:none; padding:20px 24px; max-width:1400px; margin:0 auto; }
+  .stats-filters {
+    display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;
+    background:#fff; border-radius:10px; padding:12px 16px;
+    border:1px solid #e2e8f0; box-shadow:0 1px 4px rgba(0,0,0,.05);
+  }
+  .stats-filters select {
+    height:32px; border-radius:6px; border:1px solid #e2e8f0;
+    background:#f8fafc; color:#1e293b; padding:0 10px;
+    font-size:12px; font-weight:500; cursor:pointer; outline:none;
+  }
+  .stats-filters select:focus { border-color:#60a5fa; }
+  .stats-filters label { font-size:11px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em; align-self:center; }
+  .stats-kpi-row { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+  .stats-kpi {
+    flex:1; min-width:150px; background:#fff; border-radius:10px; padding:14px 18px;
+    border:1px solid #e2e8f0; box-shadow:0 1px 4px rgba(0,0,0,.05);
+  }
+  .stats-kpi .kpi-label { font-size:10px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+  .stats-kpi .kpi-value { font-size:26px; font-weight:800; color:#0f172a; }
+  .stats-kpi .kpi-sub   { font-size:11px; color:#64748b; margin-top:2px; }
+  .stats-kpi .kpi-value.blue   { color:#3b82f6; }
+  .stats-kpi .kpi-value.green  { color:#16a34a; }
+  .stats-kpi .kpi-value.orange { color:#ea580c; }
+  .stats-chart-card {
+    background:#fff; border-radius:12px; padding:18px 20px;
+    border:1px solid #e2e8f0; box-shadow:0 1px 4px rgba(0,0,0,.05);
+    margin-bottom:16px;
+  }
+  .stats-chart-card h3 { font-size:13px; font-weight:700; color:#0f172a; margin-bottom:14px; }
+  .stats-chart-card h3 span { font-weight:400; color:#64748b; font-size:11px; margin-left:6px; }
+  .stats-charts-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:800px) { .stats-charts-row { grid-template-columns:1fr; } }
+  .stats-empty { text-align:center; padding:60px 20px; color:#94a3b8; font-size:13px; }
+  .stats-loading { text-align:center; padding:40px; color:#64748b; font-size:13px; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -301,6 +339,7 @@
 <!-- ── Tab bar ───────────────────────────────────────────────────────── -->
 <div class="tab-bar">
   <button class="tab-btn active" id="tab-calendar"   onclick="switchTab('calendar')">📊 Calendrier</button>
+  <button class="tab-btn"        id="tab-stats"      onclick="switchTab('stats')">📈 Statistiques</button>
   <button class="tab-btn"        id="tab-diagnostic" onclick="switchTab('diagnostic')">🔍 Diagnostic</button>
 </div>
 
@@ -327,6 +366,52 @@
     <span class="view-badge badge-global" id="viewBadge">Global</span>
   </div>
   <div class="cal-grid" id="calGrid"></div>
+</div>
+
+<!-- ── Page Statistiques ──────────────────────────────────────────────── -->
+<div id="statsArea">
+  <!-- Filtres -->
+  <div class="stats-filters">
+    <label>Granularité</label>
+    <select id="statGran" onchange="applyStatsFilters()">
+      <option value="day">Par jour</option>
+      <option value="week" selected>Par semaine</option>
+      <option value="month">Par mois</option>
+    </select>
+    <label>Période</label>
+    <select id="statRange" onchange="reloadStats()">
+      <option value="1">1 mois</option>
+      <option value="3" selected>3 mois</option>
+      <option value="6">6 mois</option>
+      <option value="12">12 mois</option>
+    </select>
+    <label>Closer</label>
+    <select id="statCloser" onchange="applyStatsFilters()">
+      <option value="all">Tous les closers</option>
+    </select>
+    <label>Event</label>
+    <select id="statEvent" onchange="applyStatsFilters()">
+      <option value="all">Tous les events</option>
+    </select>
+  </div>
+  <!-- KPI cards -->
+  <div class="stats-kpi-row" id="statsKpiRow"></div>
+  <!-- Evolution temporelle -->
+  <div class="stats-chart-card">
+    <h3>Évolution des RDV <span id="statsTimelineLabel"></span></h3>
+    <canvas id="chartTimeline" height="90"></canvas>
+  </div>
+  <!-- Par closer + par event -->
+  <div class="stats-charts-row">
+    <div class="stats-chart-card">
+      <h3>Performance par closer</h3>
+      <canvas id="chartCloser" height="180"></canvas>
+    </div>
+    <div class="stats-chart-card">
+      <h3>Répartition par event</h3>
+      <canvas id="chartEvent" height="180"></canvas>
+    </div>
+  </div>
 </div>
 
 <!-- ── Settings drawer ────────────────────────────────────────────────── -->
@@ -1166,6 +1251,7 @@ async function openSlotPopup(closerNames, slotLabel, date, data) {
 
 // ── Render ─────────────────────────────────────────────────────────────────
 function renderGrid(data) {
+  window.lastData = data; // garde user_order pour la page stats
   const grid      = document.getElementById('calGrid');
   const isGeneral = currentView === 'general';
   const weekDays  = data.week_days || [];
@@ -1284,13 +1370,20 @@ function switchTab(tab) {
   document.getElementById('tab-' + tab).classList.add('active');
   document.getElementById('closerStats').textContent = '';
 
-  const isDiag = tab === 'diagnostic';
-  document.getElementById('viewSelect').style.display   = isDiag ? 'none' : '';
-  document.getElementById('evTypeSelect').style.display = isDiag ? 'none' : '';
-  document.getElementById('btnNext7').style.display     = isDiag ? 'none' : '';
-  document.querySelector('.week-nav').style.display     = isDiag ? 'none' : '';
+  const isDiag  = tab === 'diagnostic';
+  const isStats = tab === 'stats';
+  const isHideNav = isDiag || isStats;
+
+  document.getElementById('viewSelect').style.display   = isHideNav ? 'none' : '';
+  document.getElementById('evTypeSelect').style.display = isHideNav ? 'none' : '';
+  document.getElementById('btnNext7').style.display     = isHideNav ? 'none' : '';
+  document.querySelector('.week-nav').style.display     = isHideNav ? 'none' : '';
   document.querySelectorAll('.legend-gen,.legend-ind').forEach(el => el.style.display = 'none');
-  document.getElementById('legendTitle').textContent    = isDiag ? 'Diagnostic' : '';
+  document.getElementById('legendTitle').textContent    = isDiag ? 'Diagnostic' : isStats ? 'Statistiques' : '';
+
+  // Masquer / afficher les zones
+  document.getElementById('statsArea').style.display  = isStats ? 'block' : 'none';
+  document.getElementById('printArea').style.display  = isStats ? 'none'  : '';
 
   if (isDiag) {
     document.getElementById('printArea').innerHTML = '<div class="diag-loading">⏳ Chargement…</div>';
@@ -1298,7 +1391,13 @@ function switchTab(tab) {
     return;
   }
 
-  // Restaurer le printArea (stats + grid)
+  if (isStats) {
+    // Charger les données si pas encore fait
+    if (!statsRawData) reloadStats();
+    return;
+  }
+
+  // Restaurer le printArea (calendrier)
   if (!document.getElementById('calGrid')) {
     document.getElementById('printArea').innerHTML = `
       <div class="stats-row" id="statsRow"></div>
@@ -1400,6 +1499,244 @@ function setSyncTime() {
 function showError(msg) {
   document.getElementById('weekLabel').textContent = '⚠ Erreur';
   document.getElementById('syncTime').textContent  = msg;
+}
+
+// ── Statistiques ────────────────────────────────────────────────────────────
+let statsRawData  = null;   // bookings bruts chargés depuis l'API
+let statsCharts   = {};     // instances Chart.js en cours (pour destroy)
+
+// Groupage par période
+function statsPeriodKey(dateStr, gran) {
+  const d = new Date(dateStr + 'T12:00:00');
+  if (gran === 'month') {
+    return dateStr.slice(0, 7); // YYYY-MM
+  }
+  if (gran === 'week') {
+    // Lundi de la semaine ISO
+    const day = d.getDay() || 7;
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - day + 1);
+    return mon.toISOString().slice(0, 10);
+  }
+  return dateStr; // jour
+}
+
+function statsPeriodLabel(key, gran) {
+  const MONTHS_FR = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const DAYS_FR   = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  if (gran === 'month') {
+    const [y, m] = key.split('-');
+    return `${MONTHS_FR[+m-1]} ${y.slice(2)}`;
+  }
+  if (gran === 'week') {
+    const d = new Date(key + 'T12:00:00');
+    return `${d.getDate()} ${MONTHS_FR[d.getMonth()]}`;
+  }
+  // jour
+  const d = new Date(key + 'T12:00:00');
+  return `${DAYS_FR[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`;
+}
+
+// Filtre les bookings selon les selects
+function statsFilterBookings(raw) {
+  const closer    = document.getElementById('statCloser')?.value || 'all';
+  const eventType = document.getElementById('statEvent')?.value  || 'all';
+  return raw.filter(b =>
+    (closer    === 'all' || b.member_name === closer) &&
+    (eventType === 'all' || b.event_type  === eventType)
+  );
+}
+
+// Peuple les dropdowns Closer et Event depuis les données brutes
+function statsPopulateFilters(raw) {
+  const closers = [...new Set(raw.map(b => b.member_name).filter(Boolean))].sort();
+  const events  = [...new Set(raw.map(b => b.event_type).filter(Boolean))].sort();
+  const closerSel = document.getElementById('statCloser');
+  const eventSel  = document.getElementById('statEvent');
+  if (!closerSel || !eventSel) return;
+  const prevCloser = closerSel.value;
+  const prevEvent  = eventSel.value;
+  closerSel.innerHTML = '<option value="all">Tous les closers</option>' +
+    closers.map(n => `<option value="${n}"${n===prevCloser?' selected':''}>${getDisplayName(n)}</option>`).join('');
+  eventSel.innerHTML = '<option value="all">Tous les events</option>' +
+    events.map(e => `<option value="${e}"${e===prevEvent?' selected':''}>${e}</option>`).join('');
+}
+
+function statsDestroyChart(id) {
+  if (statsCharts[id]) { statsCharts[id].destroy(); delete statsCharts[id]; }
+}
+
+function renderStatsKPIs(bookings, gran) {
+  const row = document.getElementById('statsKpiRow');
+  if (!row) return;
+  const total = bookings.length;
+  // Cette semaine
+  const todayStr = new Date().toISOString().slice(0,10);
+  const weekKey  = statsPeriodKey(todayStr, 'week');
+  const thisWeek = bookings.filter(b => statsPeriodKey(b.date, 'week') === weekKey).length;
+  // Ce mois
+  const monthKey = todayStr.slice(0,7);
+  const thisMonth = bookings.filter(b => b.date.slice(0,7) === monthKey).length;
+  // Meilleur closer
+  const byCloser = {};
+  bookings.forEach(b => { byCloser[b.member_name] = (byCloser[b.member_name]||0)+1; });
+  const topCloserEntry = Object.entries(byCloser).sort((a,b)=>b[1]-a[1])[0];
+  const topCloser = topCloserEntry ? `${getDisplayName(topCloserEntry[0])} (${topCloserEntry[1]})` : '—';
+  // Moyenne / semaine
+  const keys = new Set(bookings.map(b => statsPeriodKey(b.date, 'week')));
+  const avgWeek = keys.size ? (total / keys.size).toFixed(1) : '—';
+
+  row.innerHTML = `
+    <div class="stats-kpi"><div class="kpi-label">Total RDV</div><div class="kpi-value blue">${total}</div><div class="kpi-sub">sur la période sélectionnée</div></div>
+    <div class="stats-kpi"><div class="kpi-label">Ce mois</div><div class="kpi-value">${thisMonth}</div><div class="kpi-sub">mois en cours</div></div>
+    <div class="stats-kpi"><div class="kpi-label">Cette semaine</div><div class="kpi-value">${thisWeek}</div><div class="kpi-sub">semaine en cours</div></div>
+    <div class="stats-kpi"><div class="kpi-label">Moy. / semaine</div><div class="kpi-value green">${avgWeek}</div><div class="kpi-sub">sur la période</div></div>
+    <div class="stats-kpi"><div class="kpi-label">Top closer</div><div class="kpi-value orange" style="font-size:15px;margin-top:4px">${topCloser}</div></div>`;
+}
+
+function renderStatsTimeline(bookings, gran) {
+  statsDestroyChart('timeline');
+  const label = document.getElementById('statsTimelineLabel');
+  if (label) label.textContent = gran === 'day' ? '— par jour' : gran === 'week' ? '— par semaine' : '— par mois';
+
+  // Collecter tous les closers (pour légende + couleurs)
+  const allClosers = [...new Set(bookings.map(b => b.member_name).filter(Boolean))];
+  const globalOrder = (window.lastData?.user_order || allClosers);
+  const closers = globalOrder.filter(c => allClosers.includes(c));
+  const colorMap = {};
+  (window.lastData?.user_order || closers).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+
+  // Construire les périodes (toutes, même à 0)
+  const periodSet = new Set(bookings.map(b => statsPeriodKey(b.date, gran)));
+  const periods   = [...periodSet].sort();
+
+  // Dataset par closer
+  const datasets = closers.map(closer => {
+    const data = periods.map(p =>
+      bookings.filter(b => b.member_name === closer && statsPeriodKey(b.date, gran) === p).length
+    );
+    const color = colorMap[closer] || '#64748b';
+    return {
+      label:           getDisplayName(closer),
+      data,
+      backgroundColor: color + 'cc',
+      borderColor:     color,
+      borderWidth:     1,
+      borderRadius:    3,
+    };
+  });
+
+  // Dataset total si filtre closer appliqué (1 seul closer → pas stacked)
+  const isFiltered = document.getElementById('statCloser')?.value !== 'all';
+
+  const ctx = document.getElementById('chartTimeline');
+  if (!ctx) return;
+  statsCharts['timeline'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels:   periods.map(p => statsPeriodLabel(p, gran)),
+      datasets,
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            footer: (items) => {
+              const total = items.reduce((s,i) => s + i.raw, 0);
+              return items.length > 1 ? `Total : ${total}` : '';
+            }
+          }
+        }
+      },
+      scales: {
+        x: { stacked: !isFiltered, grid: { display: false } },
+        y: { stacked: !isFiltered, beginAtZero: true, ticks: { stepSize: 1 } },
+      }
+    }
+  });
+}
+
+function renderStatsCloserChart(bookings) {
+  statsDestroyChart('closer');
+  const byCloser = {};
+  bookings.forEach(b => { byCloser[b.member_name] = (byCloser[b.member_name]||0)+1; });
+  const sorted = Object.entries(byCloser).sort((a,b) => b[1]-a[1]);
+  const globalOrder = (window.lastData?.user_order || []);
+  const colors = sorted.map(([n]) => {
+    const idx = globalOrder.indexOf(n);
+    return CLOSER_COLORS[(idx>=0?idx:sorted.findIndex(([x])=>x===n)) % CLOSER_COLORS.length];
+  });
+  const ctx = document.getElementById('chartCloser');
+  if (!ctx) return;
+  statsCharts['closer'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels:   sorted.map(([n]) => getDisplayName(n)),
+      datasets: [{ data: sorted.map(([,c])=>c), backgroundColor: colors, borderRadius: 5, borderWidth: 0 }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { grid: { display: false } } }
+    }
+  });
+}
+
+function renderStatsEventChart(bookings) {
+  statsDestroyChart('event');
+  const byEvent = {};
+  bookings.forEach(b => { const k = b.event_type || 'Inconnu'; byEvent[k] = (byEvent[k]||0)+1; });
+  const sorted = Object.entries(byEvent).sort((a,b) => b[1]-a[1]);
+  const palette = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#14b8a6','#f97316','#a855f7'];
+  const ctx = document.getElementById('chartEvent');
+  if (!ctx) return;
+  statsCharts['event'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels:   sorted.map(([n])=>n),
+      datasets: [{ data: sorted.map(([,c])=>c), backgroundColor: palette, borderWidth: 2, borderColor: '#fff' }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12, padding: 10 } },
+        tooltip: { callbacks: {
+          label: (ctx) => ` ${ctx.label}: ${ctx.raw} (${Math.round(ctx.raw/bookings.length*100)}%)`
+        }}
+      }
+    }
+  });
+}
+
+function applyStatsFilters() {
+  if (!statsRawData) return;
+  const filtered = statsFilterBookings(statsRawData);
+  const gran = document.getElementById('statGran')?.value || 'week';
+  renderStatsKPIs(filtered, gran);
+  renderStatsTimeline(filtered, gran);
+  renderStatsCloserChart(filtered);
+  renderStatsEventChart(filtered);
+}
+
+async function reloadStats() {
+  const area = document.getElementById('statsArea');
+  if (!area) return;
+  document.getElementById('statsKpiRow').innerHTML = '<div class="stats-loading">⏳ Chargement des données…</div>';
+  statsDestroyChart('timeline'); statsDestroyChart('closer'); statsDestroyChart('event');
+  try {
+    const months = document.getElementById('statRange')?.value || 3;
+    const r = await fetch(`/api/stats?months=${months}`);
+    if (!r.ok) throw new Error(`API ${r.status}`);
+    const data = await r.json();
+    statsRawData = data.bookings || [];
+    statsPopulateFilters(statsRawData);
+    applyStatsFilters();
+  } catch(e) {
+    document.getElementById('statsKpiRow').innerHTML = `<div class="stats-empty">⚠ Erreur de chargement : ${e.message}</div>`;
+  }
 }
 
 // Auto-refresh toutes les 60 min

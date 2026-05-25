@@ -203,6 +203,31 @@ def invitees():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/stats")
+def stats_data():
+    """Retourne les bookings Supabase pour la page statistiques (6 mois par défaut)."""
+    try:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            return jsonify({"error": "Supabase non configuré", "bookings": []}), 200
+        months_back = min(int(request.args.get("months", 6)), 24)
+        start_date  = (datetime.now() - timedelta(days=months_back * 31)).strftime("%Y-%m-%d")
+        r = req_http.get(
+            f"{SUPABASE_URL}/rest/v1/bookings",
+            headers=_sb_headers(),
+            params={
+                "date":   f"gte.{start_date}",
+                "status": "eq.active",
+                "select": "date,member_name,event_type,start_time",
+                "order":  "date.asc",
+                "limit":  "10000",
+            },
+            timeout=15
+        )
+        bookings = r.json() if r.ok else []
+        return jsonify({"bookings": bookings, "count": len(bookings), "start_date": start_date})
+    except Exception as e:
+        return jsonify({"error": str(e), "bookings": []}), 500
+
 @app.route("/api/slot_invitees")
 def slot_invitees():
     """
