@@ -324,6 +324,32 @@ def health():
         "webhook_url": f"{APP_URL}/api/webhook/calendly" if APP_URL else None,
     })
 
+@app.route("/api/event_available_times")
+def event_available_times():
+    """Retourne les vrais créneaux Calendly pour un event type sur une semaine."""
+    try:
+        event_type_uri = request.args.get("event_type_uri", "")
+        week_offset    = int(request.args.get("week_offset", 0))
+        next7          = request.args.get("next7", "false") == "true"
+        if not event_type_uri:
+            return jsonify({"error": "event_type_uri requis"}), 400
+
+        from datetime import datetime, timedelta
+        if next7:
+            start_day = (datetime.utcnow() + timedelta(hours=PARIS_OFFSET)).replace(hour=0, minute=0, second=0, microsecond=0)
+        else:
+            from calendly_api import BASE_MONDAY
+            start_day = BASE_MONDAY + timedelta(weeks=week_offset)
+
+        end_day   = start_day + timedelta(days=6)
+        start_utc = (start_day - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT00:00:00.000000Z")
+        end_utc   = (end_day   - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT23:59:59.000000Z")
+
+        slots = calendly_api.get_event_type_available_times(event_type_uri, start_utc, end_utc)
+        return jsonify(slots)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/test_supabase")
 def test_supabase():
     """Teste la connectivité Supabase depuis Railway — diagnostic DNS/auth."""

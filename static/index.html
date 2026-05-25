@@ -554,12 +554,37 @@ function applyEventTypeFilter(memberName, di, rawStatus, slotLabel, weekDays) {
   return 'green'; // en heure de travail mais pas ce type d'event → dispo
 }
 
-function setEventTypeFilter(val) {
+async function setEventTypeFilter(val) {
   eventTypeFilter = val;
   updateBookingUrlBar(val);
   updateLegendAndTitle();
+  if (val && val !== 'all') {
+    await loadRealAvailability(val);
+  }
   const data = next7Mode ? next7Cache : weekCache[weekOffset];
   if (data) renderGrid(data);
+}
+
+async function loadRealAvailability(eventTypeName) {
+  const uri = eventTypeUris[eventTypeName];
+  if (!uri) return;
+  const ckey = uri + '_' + (next7Mode ? 'next7' : weekOffset);
+  if (realAvailCache[ckey]) return;  // déjà chargé
+  try {
+    const params = next7Mode
+      ? `event_type_uri=${encodeURIComponent(uri)}&next7=true`
+      : `event_type_uri=${encodeURIComponent(uri)}&week_offset=${weekOffset}`;
+    const r = await fetch(`/api/event_available_times?${params}`);
+    if (r.ok) realAvailCache[ckey] = await r.json();
+  } catch(e) { /* silencieux */ }
+}
+
+function getRealAvailSlots() {
+  if (!eventTypeFilter || eventTypeFilter === 'all') return null;
+  const uri  = eventTypeUris[eventTypeFilter];
+  if (!uri) return null;
+  const ckey = uri + '_' + (next7Mode ? 'next7' : weekOffset);
+  return realAvailCache[ckey] || null;
 }
 
 // ── Recompute general grid côté client (exclusions + filtre event) ─────────
@@ -624,7 +649,9 @@ async function fetchMembers() {
 
 // ── Charger les noms d'event types depuis l'API (une fois au démarrage) ───
 let eventTypeUrls    = {};  // name → scheduling_url
+let eventTypeUris    = {};  // name → event_type_uri
 let eventTypeMembers = {};  // name → [member_name, ...]
+let realAvailCache   = {};  // event_type_uri+key → {date: [slots]}
 
 async function loadEventTypeNames() {
   try {
@@ -636,10 +663,12 @@ async function loadEventTypeNames() {
     // Support ancien format (array of strings) ET nouveau format (array of {name,url,members})
     const names = items.map(i => typeof i === 'string' ? i : i.name);
     eventTypeUrls    = {};
+    eventTypeUris    = {};
     eventTypeMembers = {};
     items.forEach(i => {
       if (typeof i === 'object' && i.name) {
         eventTypeUrls[i.name]    = i.url     || '';
+        eventTypeUris[i.name]    = i.uri     || '';
         eventTypeMembers[i.name] = i.members || [];
       }
     });
@@ -702,8 +731,9 @@ async function loadEventsForFilter() {
     const r = await fetch(url);
     if (!r.ok) return;
     eventsCache = await r.json();
-    // Re-render si un filtre est actif
+    // Charger aussi la vraie dispo Calendly si un event type est sélectionné
     if (eventTypeFilter !== 'all') {
+      await loadRealAvailability(eventTypeFilter);
       const data = next7Mode ? next7Cache : weekCache[weekOffset];
       if (data) renderGrid(data);
     }
@@ -849,6 +879,9 @@ function renderGrid(data) {
     effectiveOrder   = r.user_order;
   }
 
+  // Si un event type est sélectionné et qu'on a la vraie dispo Calendly → l'utiliser
+  const realAvail = isGeneral ? getRealAvailSlots() : null;
+
   const gridData  = isGeneral ? effectiveGeneral : data.users[currentView];
   const weekDays  = data.week_days || [];
   const dayLabels = getWeekDayLabels(weekDays);
@@ -883,11 +916,30 @@ function renderGrid(data) {
         cell.classList.add('slot-grey');
       } else if (isGeneral) {
         // ── Vue Générale ──
-        const slot = gridData[di][si];
-        if      (slot.color === 'green')  { cell.classList.add('slot-green');  cell.textContent = slot.label; }
-        else if (slot.color === 'orange') { cell.classList.add('slot-orange'); cell.textContent = slot.label; }
-        else if (slot.color === 'red')    { cell.classList.add('slot-red');    cell.textContent = slot.label; }
-        else                              { cell.classList.add('slot-grey'); }
+        const slot     = gridData[di][si];
+        const dateStr  = weekDays[di] || '';
+
+        // Si on a la vraie dispo Calendly pour cet event type → remplacer la couleur
+        if (realAvail !== null) {
+          const daySlots = realAvail[dateStr] || [];
+          const isRealAvail = daySlots.includes(label);
+          // Garder les rouges (RDV posés) depuis la grille calculée
+          if (slot.color === 'red') {
+            cell.classList.add('slot-red'); cell.textContent = slot.label;
+          } else if (isRealAvail) {
+            cell.classList.add('slot-green'); cell.textContent = '✓';
+          } else if (slot.color !== 'grey') {
+            // Hors horaires ou créneau non proposé par Calendly
+            cell.classList.add('slot-grey');
+          } else {
+            cell.classList.add('slot-grey');
+          }
+        } else {
+          if      (slot.color === 'green')  { cell.classList.add('slot-green');  cell.textContent = slot.label; }
+          else if (slot.color === 'orange') { cell.classList.add('slot-orange'); cell.textContent = slot.label; }
+          else if (slot.color === 'red')    { cell.classList.add('slot-red');    cell.textContent = slot.label; }
+          else                              { cell.classList.add('slot-grey'); }
+        }
 
         if (slot.color !== 'grey') {
           const booked = effectiveOrder.filter(n => data.users[n]?.[di]?.[si] === 'red');
