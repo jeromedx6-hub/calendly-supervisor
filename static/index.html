@@ -69,6 +69,17 @@
   .legend-sep { width: 1px; height: 14px; background: #e2e8f0; }
   .closer-stats { margin-left: auto; font-size: 11px; color: #94a3b8; }
 
+  /* ── Booking URL bar ── */
+  .booking-url-bar {
+    background: #f0f9ff; border-bottom: 1px solid #bae6fd;
+    padding: 7px 20px; display: none; align-items: center; gap: 10px;
+  }
+  .booking-url-label { font-size: 11px; font-weight: 600; color: #0369a1; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+  .booking-url-link { font-size: 12px; color: #0284c7; text-decoration: none; word-break: break-all; }
+  .booking-url-link:hover { text-decoration: underline; }
+  .booking-url-copy { margin-left: auto; background: #0284c7; color: #fff; border: none; border-radius: 5px; padding: 3px 10px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+  .booking-url-copy:hover { background: #0369a1; }
+
   /* ── Stats ── */
   .grid-container { padding: 14px 20px; overflow-x: auto; }
   .view-title { font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
@@ -279,6 +290,13 @@
   <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#fee2e2;border:1.5px solid #fca5a5"></div>RDV posé</div>
   <div class="legend-item legend-ind" style="display:none"><div class="legend-dot" style="background:#f1f5f9;border:1.5px solid #cbd5e1"></div>Indisponible</div>
   <span class="closer-stats" id="closerStats"></span>
+</div>
+
+<!-- ── Booking URL bar (visible quand un event type est sélectionné) ─── -->
+<div class="booking-url-bar" id="bookingUrlBar">
+  <span class="booking-url-label">🔗 Lien de réservation</span>
+  <a class="booking-url-link" id="bookingUrlLink" href="#" target="_blank"></a>
+  <button class="booking-url-copy" onclick="copyBookingUrl()">Copier</button>
 </div>
 
 <!-- ── Main content ───────────────────────────────────────────────────── -->
@@ -538,6 +556,7 @@ function applyEventTypeFilter(memberName, di, rawStatus, slotLabel, weekDays) {
 
 function setEventTypeFilter(val) {
   eventTypeFilter = val;
+  updateBookingUrlBar(val);
   const data = next7Mode ? next7Cache : weekCache[weekOffset];
   if (data) renderGrid(data);
 }
@@ -597,12 +616,21 @@ async function fetchMembers() {
 }
 
 // ── Charger les noms d'event types depuis l'API (une fois au démarrage) ───
+let eventTypeUrls = {};  // name → scheduling_url
+
 async function loadEventTypeNames() {
   try {
     const r = await fetch('/api/event_type_names');
     if (!r.ok) return;
-    const names = await r.json();
-    if (!Array.isArray(names)) return;
+    const items = await r.json();
+    if (!Array.isArray(items)) return;
+
+    // Support ancien format (array of strings) ET nouveau format (array of {name,url})
+    const names = items.map(i => typeof i === 'string' ? i : i.name);
+    eventTypeUrls = {};
+    items.forEach(i => {
+      if (typeof i === 'object' && i.name) eventTypeUrls[i.name] = i.url || '';
+    });
     allEventTypeNames = names;
 
     // Peupler le dropdown filtre
@@ -617,6 +645,9 @@ async function loadEventTypeNames() {
     sel.value = names.includes(prev) ? prev : 'all';
     eventTypeFilter = sel.value;
 
+    // Mettre à jour la barre de lien
+    updateBookingUrlBar(eventTypeFilter);
+
     // Mettre à jour la liste dans le panel settings si ouvert
     renderSettingsEventList();
 
@@ -627,6 +658,29 @@ async function loadEventTypeNames() {
       if (data) renderGrid(data);
     }
   } catch(e) { /* silencieux */ }
+}
+
+function updateBookingUrlBar(filter) {
+  const bar  = document.getElementById('bookingUrlBar');
+  const link = document.getElementById('bookingUrlLink');
+  if (!bar || !link) return;
+  const url = filter && filter !== 'all' ? (eventTypeUrls[filter] || '') : '';
+  if (url) {
+    link.href        = url;
+    link.textContent = url;
+    bar.style.display = 'flex';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function copyBookingUrl() {
+  const link = document.getElementById('bookingUrlLink');
+  if (!link || !link.href || link.href === '#') return;
+  navigator.clipboard.writeText(link.href).then(() => {
+    const btn = document.querySelector('.booking-url-copy');
+    if (btn) { btn.textContent = '✓ Copié !'; setTimeout(() => btn.textContent = 'Copier', 1800); }
+  });
 }
 
 // ── Charger les événements planifiés (pour la logique de filtre) ───────────

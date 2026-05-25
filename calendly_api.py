@@ -352,18 +352,18 @@ def get_all_event_type_names() -> list:
     if not members:
         members = all_members
 
-    names = set()
+    types = {}  # name → scheduling_url
     for m in members:
         try:
             et = api_get(f"{CALENDLY_BASE}/event_types", {"user": m["uri"], "active": "true", "count": 100})
             for e in et.get("collection", []):
                 n = e.get("name", "").strip()
-                if n:
-                    names.add(n)
+                if n and n not in types:
+                    types[n] = e.get("scheduling_url", "")
         except Exception:
             pass
 
-    result = sorted(names)
+    result = [{"name": n, "url": types[n]} for n in sorted(types)]
     cache_set(ckey, result, ttl=3600)   # 1h — les event types changent rarement
     return result
 
