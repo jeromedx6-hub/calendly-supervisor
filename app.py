@@ -297,14 +297,30 @@ def import_history():
         if not bookings:
             return jsonify({"ok": True, "imported": 0})
 
-        # Upsert en batch (Supabase accepte un tableau)
-        r = req_http.post(
-            f"{SUPABASE_URL}/rest/v1/bookings",
-            headers=_sb_headers("resolution=merge-duplicates,return=minimal"),
-            json=bookings,
-            timeout=60
-        )
-        return jsonify({"ok": r.ok, "imported": len(bookings), "status": r.status_code})
+        # Dédupliquer par event_uri (évite les 409 liés aux doublons intra-batch)
+        seen = set()
+        unique = []
+        for b in bookings:
+            k = b.get("event_uri", "")
+            if k and k not in seen:
+                seen.add(k)
+                unique.append(b)
+
+        # Upsert en chunks de 100 pour éviter les timeouts et conflits
+        CHUNK = 100
+        errors = []
+        for i in range(0, len(unique), CHUNK):
+            chunk = unique[i:i+CHUNK]
+            r = req_http.post(
+                f"{SUPABASE_URL}/rest/v1/bookings",
+                headers=_sb_headers("resolution=merge-duplicates,return=minimal"),
+                json=chunk,
+                timeout=30
+            )
+            if not r.ok:
+                errors.append({"chunk": i // CHUNK, "status": r.status_code, "body": r.text[:200]})
+
+        return jsonify({"ok": len(errors) == 0, "imported": len(unique), "errors": errors})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
