@@ -1650,19 +1650,43 @@ function renderStatsTimeline(bookings, gran) {
   // Dataset total si filtre closer appliqué (1 seul closer → pas stacked)
   const isFiltered = document.getElementById('statCloser')?.value !== 'all';
 
+  // Dataset transparent pour afficher le total au-dessus de chaque barre
+  const totals = periods.map(p => bookings.filter(b => statsPeriodKey(b.date, gran) === p).length);
+  const totalDataset = {
+    label: '_total',
+    data: totals,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    datalabels: {
+      anchor: 'end',
+      align: 'end',
+      color: '#0f172a',
+      font: { size: 11, weight: '800' },
+      formatter: (v) => v,
+      display: true,
+    }
+  };
+
   const ctx = document.getElementById('chartTimeline');
   if (!ctx) return;
   statsCharts['timeline'] = new Chart(ctx, {
     type: 'bar',
     data: {
       labels:   periods.map(p => statsPeriodLabel(p, gran)),
-      datasets,
+      datasets: [...datasets, totalDataset],
     },
     options: {
       responsive: true,
       plugins: {
-        legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
+        legend: {
+          position: 'top',
+          labels: {
+            font: { size: 11 }, boxWidth: 12,
+            filter: (item) => item.text !== '_total', // cacher le total de la légende
+          }
+        },
         tooltip: {
+          filter: (item) => item.dataset.label !== '_total',
           callbacks: {
             footer: (items) => {
               const total = items.reduce((s,i) => s + i.raw, 0);
@@ -1674,7 +1698,7 @@ function renderStatsTimeline(bookings, gran) {
           color: '#fff',
           font: { size: 10, weight: '700' },
           formatter: (v) => v > 0 ? v : '',
-          display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 3,
+          display: (ctx) => ctx.dataset.label !== '_total' && ctx.dataset.data[ctx.dataIndex] >= 3,
           anchor: 'center',
           align: 'center',
         }
