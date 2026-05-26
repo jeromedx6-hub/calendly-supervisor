@@ -1818,13 +1818,13 @@ async function reloadStats() {
     const data = await r.json();
     statsRawData = data.bookings || [];
     statsPopulateFilters(statsRawData);
-    // Initialiser les date pickers sur la plage complète des données chargées
+    // Caler les date pickers sur la plage complète des données chargées
     if (statsRawData.length) {
       const dates  = statsRawData.map(b => b.date).sort();
       const fromEl = document.getElementById('statDateFrom');
       const toEl   = document.getElementById('statDateTo');
-      if (fromEl && !fromEl.value) fromEl.value = dates[0];
-      if (toEl   && !toEl.value)   toEl.value   = dates[dates.length - 1];
+      if (fromEl) fromEl.value = dates[0];
+      if (toEl)   toEl.value   = dates[dates.length - 1];
     }
     applyStatsFilters();
   } catch(e) {
