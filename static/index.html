@@ -391,6 +391,7 @@
       <option value="6">Charger 6 mois</option>
       <option value="12">Charger 12 mois</option>
     </select>
+    <button id="btnSyncStats" onclick="syncAndReloadStats()" style="height:32px;border-radius:6px;border:1px solid #065f46;background:#065f46;color:#fff;padding:0 12px;font-size:12px;font-weight:600;cursor:pointer;">↻ Sync Calendly</button>
     <label>Closer</label>
     <select id="statCloser" onchange="applyStatsFilters()">
       <option value="all">Tous les closers</option>
@@ -1781,6 +1782,18 @@ function applyStatsFilters() {
   renderStatsTimeline(filtered, gran);
   renderStatsCloserChart(filtered);
   renderStatsEventChart(filtered);
+}
+
+async function syncAndReloadStats() {
+  const btn = document.getElementById('btnSyncStats');
+  if (btn) { btn.textContent = '⏳ Sync…'; btn.disabled = true; }
+  try {
+    await fetch('/api/import_history', { method: 'POST' });
+    statsRawData = null; // force reload
+    await reloadStats();
+  } finally {
+    if (btn) { btn.textContent = '↻ Sync Calendly'; btn.disabled = false; }
+  }
 }
 
 async function reloadStats() {
