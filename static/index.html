@@ -465,7 +465,16 @@ const FR_MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct'
 // ── State ──────────────────────────────────────────────────────────────────
 let currentView     = 'general';
 let currentTab      = 'calendar';
-let weekOffset      = 0;
+// Calcule l'offset par rapport à BASE_MONDAY (2026-05-11) pour tomber sur la semaine courante
+function computeCurrentWeekOffset() {
+  const BASE = new Date('2026-05-11T00:00:00');
+  const today = new Date();
+  const day = today.getDay() || 7;
+  const mon = new Date(today); mon.setDate(today.getDate() - day + 1);
+  mon.setHours(0,0,0,0);
+  return Math.round((mon - BASE) / (7 * 24 * 3600 * 1000));
+}
+let weekOffset = computeCurrentWeekOffset();
 let next7Mode       = false;
 
 let weekCache       = {};   // offset → data
@@ -1476,6 +1485,7 @@ async function hardRefresh() {
   currentView  = 'general';
   currentTab   = 'calendar';
   eventTypeFilter = 'all';
+  weekOffset   = computeCurrentWeekOffset(); // recalcule au cas où on a changé de semaine
   await fetch('/api/refresh', { method: 'POST' });
   // Restaurer le printArea
   document.getElementById('printArea').innerHTML = `
