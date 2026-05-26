@@ -301,6 +301,7 @@
   .stats-loading { text-align:center; padding:40px; color:#64748b; font-size:13px; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 </head>
 <body>
 
@@ -1657,13 +1658,22 @@ function renderStatsTimeline(bookings, gran) {
               return items.length > 1 ? `Total : ${total}` : '';
             }
           }
+        },
+        datalabels: {
+          color: '#fff',
+          font: { size: 10, weight: '700' },
+          formatter: (v) => v > 0 ? v : '',
+          display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 3,
+          anchor: 'center',
+          align: 'center',
         }
       },
       scales: {
         x: { stacked: !isFiltered, grid: { display: false } },
         y: { stacked: !isFiltered, beginAtZero: true, ticks: { stepSize: 1 } },
       }
-    }
+    },
+    plugins: [ChartDataLabels],
   });
 }
 
@@ -1730,13 +1740,22 @@ function renderStatsEventChart(bookings) {
       responsive: true,
       plugins: {
         legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
-        tooltip: { callbacks: { footer: (items) => { const t = items.reduce((s,i)=>s+i.raw,0); return items.length>1?`Total : ${t}`:''; } } }
+        tooltip: { callbacks: { footer: (items) => { const t = items.reduce((s,i)=>s+i.raw,0); return items.length>1?`Total : ${t}`:''; } } },
+        datalabels: {
+          color: '#fff',
+          font: { size: 10, weight: '700' },
+          formatter: (v) => v > 0 ? v : '',
+          display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 3,
+          anchor: 'center',
+          align: 'center',
+        }
       },
       scales: {
         x: { stacked: true, grid: { display: false } },
         y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }
       }
-    }
+    },
+    plugins: [ChartDataLabels],
   });
 }
 
