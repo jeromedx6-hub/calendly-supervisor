@@ -1808,13 +1808,16 @@ async function reloadStats() {
     const data = await r.json();
     statsRawData = data.bookings || [];
     statsPopulateFilters(statsRawData);
-    // Initialiser les date pickers sur la plage réelle des données
-    if (statsRawData.length) {
-      const dates  = statsRawData.map(b => b.date).sort();
-      const fromEl = document.getElementById('statDateFrom');
-      const toEl   = document.getElementById('statDateTo');
-      if (fromEl && !fromEl.value) fromEl.value = dates[0];
-      if (toEl   && !toEl.value)   toEl.value   = dates[dates.length - 1];
+    // Initialiser les date pickers sur la semaine en cours (lundi → dimanche)
+    const fromEl = document.getElementById('statDateFrom');
+    const toEl   = document.getElementById('statDateTo');
+    if (fromEl && !fromEl.value) {
+      const today = new Date();
+      const day   = today.getDay() || 7; // 1=lun … 7=dim
+      const mon   = new Date(today); mon.setDate(today.getDate() - day + 1);
+      const sun   = new Date(mon);   sun.setDate(mon.getDate() + 6);
+      fromEl.value = mon.toISOString().slice(0, 10);
+      if (toEl) toEl.value = sun.toISOString().slice(0, 10);
     }
     applyStatsFilters();
   } catch(e) {
