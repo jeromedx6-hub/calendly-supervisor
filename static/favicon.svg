@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Fond arrondi bleu foncé -->
+  <rect width="32" height="32" rx="6" fill="#0f172a"/>
+  <!-- Calendrier stylisé -->
+  <rect x="5" y="8" width="22" height="18" rx="3" fill="#1e40af"/>
+  <!-- Barre top calendrier -->
+  <rect x="5" y="8" width="22" height="6" rx="3" fill="#3b82f6"/>
+  <rect x="5" y="11" width="22" height="3" fill="#3b82f6"/>
+  <!-- Crochets du calendrier -->
+  <rect x="10" y="5" width="3" height="6" rx="1.5" fill="#60a5fa"/>
+  <rect x="19" y="5" width="3" height="6" rx="1.5" fill="#60a5fa"/>
+  <!-- Point rouge = RDV posé -->
+  <circle cx="16" cy="20" r="4" fill="#ef4444"/>
+  <circle cx="16" cy="20" r="2.2" fill="#fff"/>
+</svg>
