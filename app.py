@@ -350,6 +350,65 @@ def members():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/enrich_leads", methods=["POST"])
+def enrich_leads():
+    """Re-fetche les invités Calendly pour tous les bookings sans lead_email dans Supabase."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return jsonify({"error": "Supabase non configuré"}), 500
+    try:
+        # 1. Récupérer tous les bookings sans lead_email
+        r = req_http.get(
+            f"{SUPABASE_URL}/rest/v1/bookings",
+            headers=_sb_headers(),
+            params={
+                "lead_email": "eq.",
+                "status":     "eq.active",
+                "select":     "id,event_uri,lead_name,lead_email",
+                "limit":      "2000",
+            },
+            timeout=15
+        )
+        if not r.ok:
+            return jsonify({"error": f"Supabase GET {r.status_code}"}), 500
+        empty_rows = [row for row in r.json() if row.get("event_uri")]
+        total      = len(empty_rows)
+        enriched   = 0
+        errors     = 0
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def enrich_one(row):
+            uri      = row.get("event_uri", "")
+            if not uri: return False
+            invitees = calendly_api.get_event_invitees(uri)
+            if not invitees: return False
+            inv  = invitees[0]
+            name = inv.get("name", "")
+            mail = inv.get("email", "")
+            if not name and not mail: return False
+            # PATCH Supabase
+            patch = req_http.patch(
+                f"{SUPABASE_URL}/rest/v1/bookings",
+                headers=_sb_headers(prefer="return=minimal"),
+                params={"event_uri": f"eq.{uri}"},
+                json={"lead_name": name, "lead_email": mail},
+                timeout=8
+            )
+            return patch.ok
+
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            futures = {ex.submit(enrich_one, row): row for row in empty_rows}
+            for fut in as_completed(futures):
+                try:
+                    if fut.result(): enriched += 1
+                    else: errors += 1
+                except Exception:
+                    errors += 1
+
+        return jsonify({"ok": True, "total_empty": total, "enriched": enriched, "errors": errors})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/import_history", methods=["POST"])
 def import_history():
     """Importe tous les RDV historiques (90j passés + 30j futurs) dans Supabase."""

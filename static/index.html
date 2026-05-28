@@ -414,7 +414,9 @@
     <input type="text" id="prospectsInput" class="prospects-search-input"
       placeholder="Rechercher par nom ou email…" onkeydown="if(event.key==='Enter') searchProspects()">
     <button class="prospects-search-btn" onclick="searchProspects()">🔍 Rechercher</button>
+    <button id="btnEnrichLeads" onclick="enrichLeads()" style="height:38px;border-radius:8px;border:none;background:#065f46;color:#fff;padding:0 14px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;" title="Récupère les leads manquants depuis Calendly">↻ Compléter les leads</button>
   </div>
+  <div id="enrichInfo" style="font-size:11px;color:#64748b;margin-top:-16px;margin-bottom:12px;"></div>
   <div id="prospectsInfo" class="prospects-results-info"></div>
   <div id="prospectsResults"></div>
 </div>
@@ -1911,6 +1913,23 @@ async function searchProspects() {
       </table>`;
   } catch(e) {
     results.innerHTML = `<div class="prospects-empty">⚠ Erreur : ${e.message}</div>`;
+  }
+}
+
+async function enrichLeads() {
+  const btn  = document.getElementById('btnEnrichLeads');
+  const info = document.getElementById('enrichInfo');
+  btn.disabled = true; btn.textContent = '⏳ En cours…';
+  info.textContent = 'Récupération des leads manquants depuis Calendly (peut prendre 1-2 min)…';
+  try {
+    const r = await fetch('/api/enrich_leads', { method: 'POST' });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    info.textContent = `✅ ${d.enriched} leads complétés sur ${d.total_empty} manquants (${d.errors} erreurs). Relancez votre recherche.`;
+  } catch(e) {
+    info.textContent = `⚠ Erreur : ${e.message}`;
+  } finally {
+    btn.disabled = false; btn.textContent = '↻ Compléter les leads';
   }
 }
 
