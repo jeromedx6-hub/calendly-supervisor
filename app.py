@@ -195,6 +195,32 @@ def events_next7():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/search_leads")
+def search_leads():
+    """Recherche de prospects par nom ou email dans Supabase."""
+    try:
+        q = request.args.get("q", "").strip()
+        if not q or len(q) < 2:
+            return jsonify({"results": [], "count": 0})
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            return jsonify({"error": "Supabase non configuré", "results": []}), 200
+        r = req_http.get(
+            f"{SUPABASE_URL}/rest/v1/bookings",
+            headers=_sb_headers(),
+            params={
+                "or":    f"(lead_name.ilike.*{q}*,lead_email.ilike.*{q}*)",
+                "status": "eq.active",
+                "select": "date,start_time,member_name,event_type,lead_name,lead_email,event_uri",
+                "order":  "date.desc",
+                "limit":  "100",
+            },
+            timeout=10
+        )
+        results = r.json() if r.ok else []
+        return jsonify({"results": results, "count": len(results)})
+    except Exception as e:
+        return jsonify({"error": str(e), "results": []}), 500
+
 @app.route("/api/invitees")
 def invitees():
     try:

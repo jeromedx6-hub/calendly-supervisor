@@ -263,6 +263,44 @@
     .cal-grid { box-shadow: none; }
   }
 
+  /* ── Prospects search page ── */
+  #prospectsArea { display:none; padding:24px; max-width:1000px; margin:0 auto; }
+  .prospects-search-wrap {
+    display:flex; gap:10px; margin-bottom:24px;
+    background:#fff; border-radius:10px; padding:14px 16px;
+    border:1px solid #e2e8f0; box-shadow:0 1px 4px rgba(0,0,0,.05);
+  }
+  .prospects-search-input {
+    flex:1; height:38px; border-radius:8px; border:1.5px solid #e2e8f0;
+    background:#f8fafc; color:#1e293b; padding:0 14px;
+    font-size:14px; outline:none; transition:border-color .2s;
+  }
+  .prospects-search-input:focus { border-color:#60a5fa; background:#fff; }
+  .prospects-search-input::placeholder { color:#94a3b8; }
+  .prospects-search-btn {
+    height:38px; border-radius:8px; border:none; background:#3b82f6;
+    color:#fff; padding:0 18px; font-size:13px; font-weight:600;
+    cursor:pointer; white-space:nowrap; transition:background .15s;
+  }
+  .prospects-search-btn:hover { background:#2563eb; }
+  .prospects-results-info { font-size:12px; color:#64748b; margin-bottom:12px; }
+  .prospects-table { width:100%; border-collapse:collapse; background:#fff;
+    border-radius:10px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.05);
+    border:1px solid #e2e8f0; }
+  .prospects-table th {
+    background:#0f172a; color:#94a3b8; font-size:10px; font-weight:600;
+    text-transform:uppercase; letter-spacing:.06em;
+    padding:10px 14px; text-align:left;
+  }
+  .prospects-table td { padding:10px 14px; border-bottom:1px solid #f1f5f9; font-size:13px; vertical-align:middle; }
+  .prospects-table tr:last-child td { border-bottom:none; }
+  .prospects-table tr:hover td { background:#f8fafc; }
+  .prospects-table .badge-closer {
+    display:inline-block; padding:2px 8px; border-radius:12px;
+    font-size:11px; font-weight:600; color:#fff;
+  }
+  .prospects-empty { text-align:center; padding:48px 20px; color:#94a3b8; font-size:13px; }
+
   /* ── Stats page ── */
   #statsArea { display:none; padding:20px 24px; max-width:1400px; margin:0 auto; }
   .stats-filters {
@@ -341,6 +379,7 @@
 <div class="tab-bar">
   <button class="tab-btn active" id="tab-calendar"   onclick="switchTab('calendar')">📊 Calendrier</button>
   <button class="tab-btn"        id="tab-stats"      onclick="switchTab('stats')">📈 Statistiques</button>
+  <button class="tab-btn"        id="tab-prospects"  onclick="switchTab('prospects')">👤 Prospects</button>
   <button class="tab-btn"        id="tab-diagnostic" onclick="switchTab('diagnostic')">🔍 Diagnostic</button>
 </div>
 
@@ -367,6 +406,17 @@
     <span class="view-badge badge-global" id="viewBadge">Global</span>
   </div>
   <div class="cal-grid" id="calGrid"></div>
+</div>
+
+<!-- ── Page Prospects ────────────────────────────────────────────────── -->
+<div id="prospectsArea">
+  <div class="prospects-search-wrap">
+    <input type="text" id="prospectsInput" class="prospects-search-input"
+      placeholder="Rechercher par nom ou email…" onkeydown="if(event.key==='Enter') searchProspects()">
+    <button class="prospects-search-btn" onclick="searchProspects()">🔍 Rechercher</button>
+  </div>
+  <div id="prospectsInfo" class="prospects-results-info"></div>
+  <div id="prospectsResults"></div>
 </div>
 
 <!-- ── Page Statistiques ──────────────────────────────────────────────── -->
@@ -1386,9 +1436,10 @@ function switchTab(tab) {
   document.getElementById('tab-' + tab).classList.add('active');
   document.getElementById('closerStats').textContent = '';
 
-  const isDiag  = tab === 'diagnostic';
-  const isStats = tab === 'stats';
-  const isHideNav = isDiag || isStats;
+  const isDiag      = tab === 'diagnostic';
+  const isStats     = tab === 'stats';
+  const isProspects = tab === 'prospects';
+  const isHideNav   = isDiag || isStats || isProspects;
 
   document.getElementById('viewSelect').style.display   = isHideNav ? 'none' : '';
   document.getElementById('evTypeSelect').style.display = isHideNav ? 'none' : '';
@@ -1398,8 +1449,9 @@ function switchTab(tab) {
   document.getElementById('legendTitle').textContent    = isDiag ? 'Diagnostic' : isStats ? 'Statistiques' : '';
 
   // Masquer / afficher les zones
-  document.getElementById('statsArea').style.display  = isStats ? 'block' : 'none';
-  document.getElementById('printArea').style.display  = isStats ? 'none'  : '';
+  document.getElementById('statsArea').style.display      = isStats     ? 'block' : 'none';
+  document.getElementById('prospectsArea').style.display  = isProspects ? 'block' : 'none';
+  document.getElementById('printArea').style.display      = (isStats || isProspects) ? 'none' : '';
 
   if (isDiag) {
     document.getElementById('printArea').innerHTML = '<div class="diag-loading">⏳ Chargement…</div>';
@@ -1408,8 +1460,12 @@ function switchTab(tab) {
   }
 
   if (isStats) {
-    // Charger les données si pas encore fait
     if (!statsRawData) reloadStats();
+    return;
+  }
+
+  if (isProspects) {
+    setTimeout(() => document.getElementById('prospectsInput')?.focus(), 50);
     return;
   }
 
@@ -1795,6 +1851,67 @@ function toggleAllEvents() {
   btn.textContent = targetState ? 'Tout décocher' : 'Tout cocher';
   btn.style.background = targetState ? '#f1f5f9' : '#0f172a';
   btn.style.color      = targetState ? '#475569'  : '#fff';
+}
+
+// ── Prospects search ────────────────────────────────────────────────────────
+const MONTHS_FR_LONG = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+function formatDateFr(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  return `${d.getDate()} ${MONTHS_FR_LONG[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+let prospectsSearchTimeout = null;
+async function searchProspects() {
+  const q       = (document.getElementById('prospectsInput')?.value || '').trim();
+  const info    = document.getElementById('prospectsInfo');
+  const results = document.getElementById('prospectsResults');
+  if (!q || q.length < 2) {
+    info.textContent = '';
+    results.innerHTML = '<div class="prospects-empty">Saisissez au moins 2 caractères pour rechercher.</div>';
+    return;
+  }
+  results.innerHTML = '<div class="prospects-empty">⏳ Recherche en cours…</div>';
+  info.textContent  = '';
+  try {
+    const r = await fetch(`/api/search_leads?q=${encodeURIComponent(q)}`);
+    if (!r.ok) throw new Error(`API ${r.status}`);
+    const data = await r.json();
+    const list = data.results || [];
+    info.textContent = list.length ? `${list.length} résultat${list.length > 1 ? 's' : ''} trouvé${list.length > 1 ? 's' : ''}` : '';
+
+    if (!list.length) {
+      results.innerHTML = `<div class="prospects-empty">Aucun prospect trouvé pour "<strong>${q}</strong>".</div>`;
+      return;
+    }
+
+    const globalOrder = window.lastData?.user_order || [];
+    const colorMap = {};
+    globalOrder.forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+
+    results.innerHTML = `
+      <table class="prospects-table">
+        <thead><tr>
+          <th>Prospect</th><th>Email</th><th>Date</th><th>Heure</th><th>Closer</th><th>Event</th>
+        </tr></thead>
+        <tbody>
+          ${list.map(b => {
+            const color  = colorMap[b.member_name] || '#64748b';
+            const dispName = getDisplayName(b.member_name);
+            return `<tr>
+              <td><strong>${b.lead_name || '—'}</strong></td>
+              <td style="color:#64748b">${b.lead_email || '—'}</td>
+              <td>${formatDateFr(b.date)}</td>
+              <td>${b.start_time || '—'}</td>
+              <td><span class="badge-closer" style="background:${color}">${dispName}</span></td>
+              <td style="color:#475569;font-size:12px">${b.event_type || '—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  } catch(e) {
+    results.innerHTML = `<div class="prospects-empty">⚠ Erreur : ${e.message}</div>`;
+  }
 }
 
 function applyStatsFilters() {
