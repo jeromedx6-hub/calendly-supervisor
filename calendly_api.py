@@ -483,7 +483,9 @@ def get_event_invitees(event_uri: str) -> list:
         ]
     except Exception:
         invitees = []
-    cache_set(ckey, invitees, ttl=1800)
+    # Ne pas cacher les listes vides — un appel raté (rate limit, erreur) ne doit pas polluer le cache
+    if invitees:
+        cache_set(ckey, invitees, ttl=1800)
     return invitees
 
 
