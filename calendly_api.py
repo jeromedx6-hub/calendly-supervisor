@@ -566,12 +566,13 @@ def get_slot_invitees(member_name: str, date: str, time: str) -> dict:
 
 def _build_events_by_member_org(start_utc, end_utc, members):
     """
-    Requête organisation pour récupérer les événements de TOUS les membres
-    (même ceux qui ne sont pas le propriétaire du token).
+    Requête organisation pour récupérer les événements de TOUS les membres,
+    y compris les membres désactivés dont on veut garder l'historique.
     """
     all_members = get_members()
     uri_to_name = {m["uri"]: m["name"] for m in all_members}
-    member_names = {m["name"] for m in members}
+    # Noms des membres actifs passés en paramètre (pour initialiser le dict)
+    active_names = {m["name"] for m in members}
 
     events_by_member = {m["name"]: [] for m in members}
     try:
@@ -586,9 +587,13 @@ def _build_events_by_member_org(start_utc, end_utc, members):
             if not memberships:
                 continue
             user_uri    = memberships[0].get("user", "")
+            # Nom depuis le mapping actif, sinon depuis le champ user_name de l'event
             member_name = uri_to_name.get(user_uri, memberships[0].get("user_name", ""))
-            if member_name not in member_names:
+            if not member_name:
                 continue
+            # Inclure même les membres désactivés (historique)
+            if member_name not in events_by_member:
+                events_by_member[member_name] = []
             try:
                 s = parse_dt_paris(e["start_time"])
                 f = parse_dt_paris(e["end_time"])
