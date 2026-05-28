@@ -855,12 +855,15 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
   const colorMap = {};
   (data.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
 
-  // Construit les events d'un jour
+  // Construit les events d'un jour (en tenant compte du filtre event type)
   function buildEvents(di) {
-    const dateStr = weekDays[di];
-    const events  = [];
+    const dateStr   = weekDays[di];
+    const events    = [];
+    const hasFilter = eventTypeFilter && eventTypeFilter !== 'all';
     for (const closer of effectiveOrder) {
-      const cached = (evByMember[closer] || []).filter(e => e.date === dateStr);
+      let cached = (evByMember[closer] || []).filter(e => e.date === dateStr);
+      // Appliquer le filtre event type si actif
+      if (hasFilter) cached = cached.filter(e => e.name === eventTypeFilter);
       if (cached.length) {
         for (const e of cached) {
           const startMin = strToMin(e.start);
