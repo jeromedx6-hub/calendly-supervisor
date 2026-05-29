@@ -1783,28 +1783,60 @@ function renderStatsTimeline(bookings, gran) {
     return cl > 0 ? (totals[i] / cl).toFixed(1) : '—';
   });
 
+  // Plugin afterDraw : dessine les stats closers/moy. sous l'axe X
+  const xAxisStatsPlugin = {
+    id: 'xAxisStats',
+    afterDraw(chart) {
+      const { ctx: c, scales: { x } } = chart;
+      c.save();
+      c.textAlign = 'center';
+      c.textBaseline = 'top';
+      const yBase = x.bottom + 6;
+      x.ticks.forEach((_, i) => {
+        const xPos = x.getPixelForTick(i);
+        // Séparateur léger
+        c.strokeStyle = '#e2e8f0';
+        c.lineWidth = 1;
+        c.beginPath();
+        c.moveTo(xPos, x.bottom + 2);
+        c.lineTo(xPos, x.bottom + 4);
+        c.stroke();
+        // Nb closers
+        c.font = '600 9.5px system-ui, -apple-system, sans-serif';
+        c.fillStyle = '#94a3b8';
+        c.fillText(`${periodClosers[i]} closers`, xPos, yBase);
+        // Moy. RDV
+        c.font = '700 9.5px system-ui, -apple-system, sans-serif';
+        c.fillStyle = '#16a34a';
+        c.fillText(`${periodAvg[i]} moy.`, xPos, yBase + 14);
+      });
+      c.restore();
+    }
+  };
+
   const ctx = document.getElementById('chartTimeline');
   if (!ctx) return;
   statsCharts['timeline'] = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: periods.map((p, i) => [
-        statsPeriodLabel(p, gran),
-        totals[i],
-        `${periodClosers[i]} cl.`,
-        `${periodAvg[i]} moy.`,
-      ]),
+      labels: periods.map((p, i) => [statsPeriodLabel(p, gran), totals[i]]),
       datasets,
     },
     options: {
       responsive: true,
+      layout: { padding: { bottom: 36 } },
       plugins: {
         legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
         tooltip: {
           callbacks: {
             footer: (items) => {
-              const total = items.reduce((s,i) => s + i.raw, 0);
-              return items.length > 1 ? `Total : ${total}` : '';
+              const idx   = items[0]?.dataIndex ?? 0;
+              const total = items.reduce((s, i) => s + i.raw, 0);
+              const lines = [];
+              if (items.length > 1) lines.push(`Total : ${total}`);
+              lines.push(`Closers actifs : ${periodClosers[idx]}`);
+              lines.push(`Moy. RDV/closer : ${periodAvg[idx]}`);
+              return lines.join('\n');
             }
           }
         },
@@ -1823,16 +1855,12 @@ function renderStatsTimeline(bookings, gran) {
           ticks: {
             font: (ctx) => {
               const lbl = ctx.tick?.label;
-              if (!isNaN(lbl) && lbl !== '') return { size: 11, weight: '800' };
-              if (typeof lbl === 'string' && lbl.includes('moy.')) return { size: 10 };
-              if (typeof lbl === 'string' && lbl.includes('cl.'))  return { size: 10 };
+              if (!isNaN(lbl) && lbl !== '') return { size: 12, weight: '800' };
               return { size: 11 };
             },
             color: (ctx) => {
               const lbl = ctx.tick?.label;
-              if (!isNaN(lbl) && lbl !== '') return '#3b82f6';       // total → bleu
-              if (typeof lbl === 'string' && lbl.includes('moy.')) return '#16a34a'; // moy → vert
-              if (typeof lbl === 'string' && lbl.includes('cl.'))  return '#94a3b8'; // closers → gris
+              if (!isNaN(lbl) && lbl !== '') return '#3b82f6';
               return '#64748b';
             },
           }
@@ -1840,7 +1868,7 @@ function renderStatsTimeline(bookings, gran) {
         y: { stacked: !isFiltered, beginAtZero: true, ticks: { stepSize: 1 } },
       }
     },
-    plugins: [ChartDataLabels],
+    plugins: [ChartDataLabels, xAxisStatsPlugin],
   });
 }
 
