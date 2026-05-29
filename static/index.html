@@ -1783,32 +1783,45 @@ function renderStatsTimeline(bookings, gran) {
     return cl > 0 ? (totals[i] / cl).toFixed(1) : '—';
   });
 
-  // Plugin afterDraw : dessine les stats closers/moy. sous l'axe X
+  // Plugin afterDraw : mini-tableau sous l'axe X avec étiquettes à gauche
+  const FONT_STATS = '700 9.5px system-ui, -apple-system, sans-serif';
+  const ROW_H = 16;
+  const ROWS = [
+    { label: 'RDV',      color: '#3b82f6', values: totals        },
+    { label: 'Closers',  color: '#64748b', values: periodClosers },
+    { label: 'Moy.',     color: '#16a34a', values: periodAvg     },
+  ];
+
   const xAxisStatsPlugin = {
     id: 'xAxisStats',
     afterDraw(chart) {
       const { ctx: c, scales: { x } } = chart;
       c.save();
-      c.textAlign = 'center';
       c.textBaseline = 'top';
-      const yBase = x.bottom + 6;
-      x.ticks.forEach((_, i) => {
-        const xPos = x.getPixelForTick(i);
-        // Séparateur léger
-        c.strokeStyle = '#e2e8f0';
-        c.lineWidth = 1;
-        c.beginPath();
-        c.moveTo(xPos, x.bottom + 2);
-        c.lineTo(xPos, x.bottom + 4);
-        c.stroke();
-        // Nb closers
-        c.font = '600 9.5px system-ui, -apple-system, sans-serif';
-        c.fillStyle = '#94a3b8';
-        c.fillText(`${periodClosers[i]} closers`, xPos, yBase);
-        // Moy. RDV
-        c.font = '700 9.5px system-ui, -apple-system, sans-serif';
-        c.fillStyle = '#16a34a';
-        c.fillText(`${periodAvg[i]} moy.`, xPos, yBase + 14);
+      const yBase  = x.bottom + 8;
+      const labelX = x.left - 8;
+
+      // Ligne de séparation horizontale fine
+      c.strokeStyle = '#e2e8f0';
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(x.left, x.bottom + 4);
+      c.lineTo(x.right, x.bottom + 4);
+      c.stroke();
+
+      ROWS.forEach((row, ri) => {
+        const y = yBase + ri * ROW_H;
+        c.font = FONT_STATS;
+        // Étiquette côté y-axis
+        c.textAlign = 'right';
+        c.fillStyle = row.color;
+        c.fillText(row.label, labelX, y);
+        // Valeurs sous chaque tick
+        c.textAlign = 'center';
+        x.ticks.forEach((_, i) => {
+          c.fillStyle = row.color;
+          c.fillText(row.values[i], x.getPixelForTick(i), y);
+        });
       });
       c.restore();
     }
@@ -1819,12 +1832,12 @@ function renderStatsTimeline(bookings, gran) {
   statsCharts['timeline'] = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: periods.map((p, i) => [statsPeriodLabel(p, gran), totals[i]]),
+      labels: periods.map(p => statsPeriodLabel(p, gran)),
       datasets,
     },
     options: {
       responsive: true,
-      layout: { padding: { bottom: 36 } },
+      layout: { padding: { bottom: 58 } },
       plugins: {
         legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
         tooltip: {
@@ -1853,16 +1866,8 @@ function renderStatsTimeline(bookings, gran) {
         x: {
           stacked: !isFiltered, grid: { display: false },
           ticks: {
-            font: (ctx) => {
-              const lbl = ctx.tick?.label;
-              if (!isNaN(lbl) && lbl !== '') return { size: 12, weight: '800' };
-              return { size: 11 };
-            },
-            color: (ctx) => {
-              const lbl = ctx.tick?.label;
-              if (!isNaN(lbl) && lbl !== '') return '#3b82f6';
-              return '#64748b';
-            },
+            font:  { size: 11 },
+            color: '#64748b',
           }
         },
         y: { stacked: !isFiltered, beginAtZero: true, ticks: { stepSize: 1 } },
