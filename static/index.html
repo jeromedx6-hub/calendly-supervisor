@@ -1772,15 +1772,28 @@ function renderStatsTimeline(bookings, gran) {
   // Dataset total si filtre closer appliqué (1 seul closer → pas stacked)
   const isFiltered = document.getElementById('statCloser')?.value !== 'all';
 
-  // Totaux par période (pour les labels de l'axe X)
+  // Totaux + stats par période (pour les labels de l'axe X)
   const totals = periods.map(p => bookings.filter(b => statsPeriodKey(b.date, gran) === p).length);
+  const periodClosers = periods.map(p => {
+    const pBooks = bookings.filter(b => statsPeriodKey(b.date, gran) === p);
+    return new Set(pBooks.map(b => b.member_name).filter(Boolean)).size;
+  });
+  const periodAvg = periods.map((p, i) => {
+    const cl = periodClosers[i];
+    return cl > 0 ? (totals[i] / cl).toFixed(1) : '—';
+  });
 
   const ctx = document.getElementById('chartTimeline');
   if (!ctx) return;
   statsCharts['timeline'] = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: periods.map((p, i) => [statsPeriodLabel(p, gran), totals[i]]),
+      labels: periods.map((p, i) => [
+        statsPeriodLabel(p, gran),
+        totals[i],
+        `${periodClosers[i]} cl.`,
+        `${periodAvg[i]} moy.`,
+      ]),
       datasets,
     },
     options: {
@@ -1808,12 +1821,20 @@ function renderStatsTimeline(bookings, gran) {
         x: {
           stacked: !isFiltered, grid: { display: false },
           ticks: {
-            font: (ctx) => ctx.tick && ctx.tick.label && !isNaN(ctx.tick.label)
-              ? { size: 11, weight: '800' }
-              : { size: 11 },
-            color: (ctx) => ctx.tick && ctx.tick.label && !isNaN(ctx.tick.label)
-              ? '#3b82f6'
-              : '#64748b',
+            font: (ctx) => {
+              const lbl = ctx.tick?.label;
+              if (!isNaN(lbl) && lbl !== '') return { size: 11, weight: '800' };
+              if (typeof lbl === 'string' && lbl.includes('moy.')) return { size: 10 };
+              if (typeof lbl === 'string' && lbl.includes('cl.'))  return { size: 10 };
+              return { size: 11 };
+            },
+            color: (ctx) => {
+              const lbl = ctx.tick?.label;
+              if (!isNaN(lbl) && lbl !== '') return '#3b82f6';       // total → bleu
+              if (typeof lbl === 'string' && lbl.includes('moy.')) return '#16a34a'; // moy → vert
+              if (typeof lbl === 'string' && lbl.includes('cl.'))  return '#94a3b8'; // closers → gris
+              return '#64748b';
+            },
           }
         },
         y: { stacked: !isFiltered, beginAtZero: true, ticks: { stepSize: 1 } },
