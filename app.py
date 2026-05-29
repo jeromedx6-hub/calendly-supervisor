@@ -452,11 +452,12 @@ def enrich_leads():
 
 @app.route("/api/import_history", methods=["POST"])
 def import_history():
-    """Importe tous les RDV historiques (90j passés + 30j futurs) dans Supabase."""
+    """Importe tous les RDV historiques dans Supabase. days_past param (défaut 90, max 365)."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return jsonify({"error": "Supabase non configuré"}), 500
     try:
-        bookings = calendly_api.get_all_bookings_for_import(days_past=90, days_future=30)
+        days_past = min(int(request.args.get("days_past", 90)), 365)
+        bookings = calendly_api.get_all_bookings_for_import(days_past=days_past, days_future=30)
         if not bookings:
             return jsonify({"ok": True, "imported": 0})
 

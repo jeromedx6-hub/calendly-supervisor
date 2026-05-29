@@ -450,6 +450,7 @@
       <option value="12">Charger 12 mois</option>
     </select>
     <button id="btnSyncStats" onclick="syncAndReloadStats()" style="height:32px;border-radius:6px;border:1px solid #065f46;background:#065f46;color:#fff;padding:0 12px;font-size:12px;font-weight:600;cursor:pointer;">↻ Sync Calendly</button>
+    <button id="btnImport12m" onclick="importFullHistory()" title="Importe 12 mois d'historique Calendly dans Supabase (récupère Alicia et les closers anciens)" style="height:32px;border-radius:6px;border:1px solid #7c3aed;background:#7c3aed;color:#fff;padding:0 12px;font-size:12px;font-weight:600;cursor:pointer;">📥 Importer 12 mois</button>
     <label>Closer</label>
     <select id="statCloser" onchange="applyStatsFilters()">
       <option value="all">Tous les closers</option>
@@ -2066,10 +2067,27 @@ async function syncAndReloadStats() {
   if (btn) { btn.textContent = '⏳ Sync…'; btn.disabled = true; }
   try {
     await fetch('/api/import_history', { method: 'POST' });
-    statsRawData = null; // force reload
+    statsRawData = null;
     await reloadStats();
   } finally {
     if (btn) { btn.textContent = '↻ Sync Calendly'; btn.disabled = false; }
+  }
+}
+
+async function importFullHistory() {
+  const btn = document.getElementById('btnImport12m');
+  if (btn) { btn.textContent = '⏳ Import…'; btn.disabled = true; }
+  try {
+    const r = await fetch('/api/import_history?days_past=365', { method: 'POST' });
+    const data = await r.json();
+    const n = data.imported ?? data.count ?? '?';
+    alert(`✅ Import terminé — ${n} RDV importés sur 12 mois.\nRechargement des statistiques…`);
+    statsRawData = null;
+    await reloadStats();
+  } catch(e) {
+    alert('❌ Erreur import : ' + e.message);
+  } finally {
+    if (btn) { btn.textContent = '📥 Importer 12 mois'; btn.disabled = false; }
   }
 }
 
