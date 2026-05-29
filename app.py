@@ -142,6 +142,47 @@ def _register_webhook():
 # Lance l'enregistrement en background sans bloquer le démarrage
 threading.Thread(target=_register_webhook, daemon=True).start()
 
+# ── Vérification périodique Calendly (nouveaux membres / event types) ──────────
+_known_members     = set()
+_known_event_types = set()
+
+def _check_calendly_updates():
+    """Tourne toutes les heures. Invalide le cache si nouveaux membres ou event types détectés."""
+    global _known_members, _known_event_types
+    import time
+    time.sleep(30)  # attendre que l'app soit bien démarrée
+    while True:
+        try:
+            members     = calendly_api.get_members()
+            member_set  = {m["name"] for m in members}
+            event_types = calendly_api.get_event_types()
+            et_set      = {e.get("name", "") for e in event_types}
+
+            changed = False
+            if _known_members and member_set != _known_members:
+                new_m = member_set - _known_members
+                gone  = _known_members - member_set
+                print(f"[AutoCheck] Nouveaux closers : {new_m} | Partis : {gone}")
+                changed = True
+            if _known_event_types and et_set != _known_event_types:
+                new_e = et_set - _known_event_types
+                print(f"[AutoCheck] Nouveaux event types : {new_e}")
+                changed = True
+
+            _known_members     = member_set
+            _known_event_types = et_set
+
+            if changed:
+                calendly_api.cache_clear()
+                print("[AutoCheck] Cache invalidé — données rechargées.")
+
+        except Exception as ex:
+            print(f"[AutoCheck] erreur : {ex}")
+
+        time.sleep(3600)  # vérifier toutes les heures
+
+threading.Thread(target=_check_calendly_updates, daemon=True).start()
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():

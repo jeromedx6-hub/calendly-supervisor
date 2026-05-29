@@ -1660,20 +1660,29 @@ function renderStatsKPIs(bookings, gran) {
   // Ce mois
   const monthKey = todayStr.slice(0,7);
   const thisMonth = bookings.filter(b => b.date.slice(0,7) === monthKey).length;
-  // Meilleur closer
+  // Par closer
   const byCloser = {};
   bookings.forEach(b => { byCloser[b.member_name] = (byCloser[b.member_name]||0)+1; });
   const topCloserEntry = Object.entries(byCloser).sort((a,b)=>b[1]-a[1])[0];
   const topCloser = topCloserEntry ? `${getDisplayName(topCloserEntry[0])} (${topCloserEntry[1]})` : '—';
-  // Moyenne / semaine
-  const keys = new Set(bookings.map(b => statsPeriodKey(b.date, 'week')));
-  const avgWeek = keys.size ? (total / keys.size).toFixed(1) : '—';
+
+  // Closers actifs cette semaine (≥1 RDV)
+  const weekKey2 = statsPeriodKey(new Date().toISOString().slice(0,10), 'week');
+  const weekBookings = bookings.filter(b => statsPeriodKey(b.date, 'week') === weekKey2);
+  const activeClosersThisWeek = new Set(weekBookings.map(b => b.member_name).filter(Boolean)).size;
+  const avgRdvPerCloser = activeClosersThisWeek > 0 ? (weekBookings.length / activeClosersThisWeek).toFixed(1) : '—';
+
+  // Moyenne / semaine (toutes semaines)
+  const weekKeys = new Set(bookings.map(b => statsPeriodKey(b.date, 'week')));
+  const avgWeek = weekKeys.size ? (total / weekKeys.size).toFixed(1) : '—';
 
   row.innerHTML = `
     <div class="stats-kpi"><div class="kpi-label">Total RDV</div><div class="kpi-value blue">${total}</div><div class="kpi-sub">sur la période sélectionnée</div></div>
     <div class="stats-kpi"><div class="kpi-label">Ce mois</div><div class="kpi-value">${thisMonth}</div><div class="kpi-sub">mois en cours</div></div>
     <div class="stats-kpi"><div class="kpi-label">Cette semaine</div><div class="kpi-value">${thisWeek}</div><div class="kpi-sub">semaine en cours</div></div>
-    <div class="stats-kpi"><div class="kpi-label">Moy. / semaine</div><div class="kpi-value green">${avgWeek}</div><div class="kpi-sub">sur la période</div></div>
+    <div class="stats-kpi"><div class="kpi-label">Closers actifs (semaine)</div><div class="kpi-value blue">${activeClosersThisWeek}</div><div class="kpi-sub">≥ 1 RDV cette semaine</div></div>
+    <div class="stats-kpi"><div class="kpi-label">Moy. RDV / closer</div><div class="kpi-value green">${avgRdvPerCloser}</div><div class="kpi-sub">cette semaine</div></div>
+    <div class="stats-kpi"><div class="kpi-label">Moy. / semaine</div><div class="kpi-value">${avgWeek}</div><div class="kpi-sub">sur la période</div></div>
     <div class="stats-kpi"><div class="kpi-label">Top closer</div><div class="kpi-value orange" style="font-size:15px;margin-top:4px">${topCloser}</div></div>`;
 }
 
