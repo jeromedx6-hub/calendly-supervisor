@@ -183,6 +183,43 @@ def _check_calendly_updates():
 
 threading.Thread(target=_check_calendly_updates, daemon=True).start()
 
+# ── Sync Supabase automatique (toutes les 6h) ─────────────────────────────────
+_last_auto_sync = None
+
+def _run_supabase_sync():
+    """Réimporte 90j passés + 30j futurs dans Supabase. Appelé par le thread auto-sync."""
+    global _last_auto_sync
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return
+    try:
+        bookings = calendly_api.get_all_bookings_for_import(days_past=90, days_future=30)
+        seen, unique = set(), []
+        for b in bookings:
+            k = b.get("event_uri", "")
+            if k and k not in seen:
+                seen.add(k); unique.append(b)
+        CHUNK = 100
+        for i in range(0, len(unique), CHUNK):
+            req_http.post(
+                _sb_upsert_url(),
+                headers=_sb_headers("resolution=merge-duplicates,return=minimal"),
+                json=unique[i:i+CHUNK], timeout=30
+            )
+        _last_auto_sync = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"[AutoSync] ✅ {len(unique)} bookings sync — {_last_auto_sync}")
+    except Exception as ex:
+        print(f"[AutoSync] ❌ erreur : {ex}")
+
+def _auto_sync_loop():
+    import time
+    time.sleep(120)  # attendre 2 min après le démarrage
+    _run_supabase_sync()  # premier sync au démarrage
+    while True:
+        time.sleep(6 * 3600)  # toutes les 6 heures
+        _run_supabase_sync()
+
+threading.Thread(target=_auto_sync_loop, daemon=True).start()
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
@@ -497,11 +534,12 @@ def refresh():
 def health():
     key = os.environ.get("CALENDLY_API_KEY", "")
     return jsonify({
-        "status":      "ok",
-        "key_set":     bool(key),
-        "key_len":     len(key),
-        "supabase":    bool(SUPABASE_URL),
-        "webhook_url": f"{APP_URL}/api/webhook/calendly" if APP_URL else None,
+        "status":        "ok",
+        "key_set":       bool(key),
+        "key_len":       len(key),
+        "supabase":      bool(SUPABASE_URL),
+        "webhook_url":   f"{APP_URL}/api/webhook/calendly" if APP_URL else None,
+        "last_auto_sync": _last_auto_sync,
     })
 
 @app.route("/api/event_available_times")
