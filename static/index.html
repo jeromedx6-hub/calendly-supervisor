@@ -368,6 +368,7 @@
     <button onclick="prevWeek()">←</button>
     <span class="week-label" id="weekLabel">Chargement…</span>
     <button onclick="nextWeek()">→</button>
+    <span id="weekTotalBadge" style="display:none;align-items:center;background:#1e40af;color:#fff;font-size:13px;font-weight:700;padding:3px 12px;border-radius:20px;margin-left:8px;letter-spacing:.01em"></span>
   </div>
 
   <button onclick="openSettings()" style="background:#475569!important;border-color:#475569!important;color:#fff!important;font-weight:500;height:32px;border-radius:6px;border:1px solid;padding:0 10px;font-size:12px;cursor:pointer;">⚙️ Membres</button>
@@ -443,11 +444,11 @@
     <label>Au</label>
     <input type="date" id="statDateTo" onchange="applyStatsFilters()"
       style="height:32px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;color:#1e293b;padding:0 8px;font-size:12px;font-weight:500;cursor:pointer;outline:none;">
-    <select id="statRange" onchange="reloadStats()" style="border-color:#94a3b8;color:#64748b;font-size:11px;">
-      <option value="1">Charger 1 mois</option>
-      <option value="3" selected>Charger 3 mois</option>
-      <option value="6">Charger 6 mois</option>
-      <option value="12">Charger 12 mois</option>
+    <select id="statRange" onchange="applyStatsFilters()" style="border-color:#94a3b8;color:#64748b;font-size:11px;">
+      <option value="1">1 mois</option>
+      <option value="3">3 mois</option>
+      <option value="6" selected>6 mois</option>
+      <option value="12">12 mois</option>
     </select>
     <button id="btnSyncStats" onclick="syncAndReloadStats()" style="height:32px;border-radius:6px;border:1px solid #065f46;background:#065f46;color:#fff;padding:0 12px;font-size:12px;font-weight:600;cursor:pointer;">↻ Sync Calendly</button>
     <button id="btnImport12m" onclick="importFullHistory()" title="Importe 12 mois d'historique Calendly dans Supabase (récupère Alicia et les closers anciens)" style="height:32px;border-radius:6px;border:1px solid #7c3aed;background:#7c3aed;color:#fff;padding:0 12px;font-size:12px;font-weight:600;cursor:pointer;">📥 Importer 12 mois</button>
@@ -996,6 +997,13 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
   wrap.appendChild(body);
   container.innerHTML = '';
   container.appendChild(wrap);
+
+  // ── Total semaine dans le label de navigation ─────────────────────────────
+  const weekTotalEl = document.getElementById('weekTotalBadge');
+  if (weekTotalEl) {
+    weekTotalEl.textContent = `${allWeekEvents.length} RDV`;
+    weekTotalEl.style.display = allWeekEvents.length > 0 ? 'inline-flex' : 'none';
+  }
 
   // ── Stats avec tooltips ────────────────────────────────────────────────────
   const statsRow = document.getElementById('statsRow');
@@ -1668,16 +1676,23 @@ function statsPeriodLabel(key, gran) {
   return `${DAYS_FR[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`;
 }
 
-// Filtre les bookings selon les selects + date range
+// Filtre les bookings selon la période sélectionnée + closer/event + date pickers
 function statsFilterBookings(raw) {
   const closer    = document.getElementById('statCloser')?.value   || 'all';
   const eventType = document.getElementById('statEvent')?.value    || 'all';
-  const dateFrom  = document.getElementById('statDateFrom')?.value || '';
-  const dateTo    = document.getElementById('statDateTo')?.value   || '';
+  const months    = parseInt(document.getElementById('statRange')?.value || 6);
+  // Cutoff calculé à partir de la période sélectionnée
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  // Date pickers : permettent un filtre plus fin à l'intérieur de la période
+  const dateFrom = document.getElementById('statDateFrom')?.value || cutoffStr;
+  const dateTo   = document.getElementById('statDateTo')?.value   || '';
+  const from = dateFrom > cutoffStr ? dateFrom : cutoffStr;
   return raw.filter(b =>
+    b.date >= from &&
     (closer    === 'all' || b.member_name === closer) &&
     (eventType === 'all' || b.event_type  === eventType) &&
-    (!dateFrom || b.date >= dateFrom) &&
     (!dateTo   || b.date <= dateTo)
   );
 }
@@ -1701,38 +1716,36 @@ function statsDestroyChart(id) {
   if (statsCharts[id]) { statsCharts[id].destroy(); delete statsCharts[id]; }
 }
 
-function renderStatsKPIs(bookings, gran) {
+// allData = 12 mois complets (pour semaine/mois courants toujours stables)
+// periodData = données filtrées sur la période sélectionnée (pour total/top/moy)
+function renderStatsKPIs(allData, periodData, gran) {
   const row = document.getElementById('statsKpiRow');
   if (!row) return;
-  const total = bookings.length;
-  // Cette semaine
-  const todayStr = new Date().toISOString().slice(0,10);
-  const weekKey  = statsPeriodKey(todayStr, 'week');
-  const thisWeek = bookings.filter(b => statsPeriodKey(b.date, 'week') === weekKey).length;
-  // Ce mois
-  const monthKey = todayStr.slice(0,7);
-  const thisMonth = bookings.filter(b => b.date.slice(0,7) === monthKey).length;
-  // Par closer
+
+  // ── Métriques "période" (changent avec le sélecteur) ─────────────────────
+  const total = periodData.length;
   const byCloser = {};
-  bookings.forEach(b => { byCloser[b.member_name] = (byCloser[b.member_name]||0)+1; });
+  periodData.forEach(b => { byCloser[b.member_name] = (byCloser[b.member_name]||0)+1; });
   const topCloserEntry = Object.entries(byCloser).sort((a,b)=>b[1]-a[1])[0];
   const topCloser = topCloserEntry ? `${getDisplayName(topCloserEntry[0])} (${topCloserEntry[1]})` : '—';
+  const periodWeekKeys = new Set(periodData.map(b => statsPeriodKey(b.date, 'week')));
+  const avgWeek = periodWeekKeys.size ? (total / periodWeekKeys.size).toFixed(1) : '—';
 
-  // Closers actifs cette semaine (≥1 RDV)
-  const weekKey2 = statsPeriodKey(new Date().toISOString().slice(0,10), 'week');
-  const weekBookings = bookings.filter(b => statsPeriodKey(b.date, 'week') === weekKey2);
-  const activeClosersThisWeek = new Set(weekBookings.map(b => b.member_name).filter(Boolean)).size;
-  const avgRdvPerCloser = activeClosersThisWeek > 0 ? (weekBookings.length / activeClosersThisWeek).toFixed(1) : '—';
-
-  // Moyenne / semaine (toutes semaines)
-  const weekKeys = new Set(bookings.map(b => statsPeriodKey(b.date, 'week')));
-  const avgWeek = weekKeys.size ? (total / weekKeys.size).toFixed(1) : '—';
+  // ── Métriques "absolues" (toujours semaine/mois courant, stables) ─────────
+  const todayStr  = new Date().toISOString().slice(0,10);
+  const weekKey   = statsPeriodKey(todayStr, 'week');
+  const monthKey  = todayStr.slice(0,7);
+  const weekBooks  = allData.filter(b => statsPeriodKey(b.date, 'week') === weekKey);
+  const thisWeek   = weekBooks.length;
+  const thisMonth  = allData.filter(b => b.date.slice(0,7) === monthKey).length;
+  const activeClosersThisWeek = new Set(weekBooks.map(b => b.member_name).filter(Boolean)).size;
+  const avgRdvPerCloser = activeClosersThisWeek > 0 ? (thisWeek / activeClosersThisWeek).toFixed(1) : '—';
 
   row.innerHTML = `
-    <div class="stats-kpi"><div class="kpi-label">Total RDV</div><div class="kpi-value blue">${total}</div><div class="kpi-sub">sur la période sélectionnée</div></div>
+    <div class="stats-kpi"><div class="kpi-label">Total RDV</div><div class="kpi-value blue">${total}</div><div class="kpi-sub">période sélectionnée</div></div>
     <div class="stats-kpi"><div class="kpi-label">Ce mois</div><div class="kpi-value">${thisMonth}</div><div class="kpi-sub">mois en cours</div></div>
     <div class="stats-kpi"><div class="kpi-label">Cette semaine</div><div class="kpi-value">${thisWeek}</div><div class="kpi-sub">semaine en cours</div></div>
-    <div class="stats-kpi"><div class="kpi-label">Closers actifs (semaine)</div><div class="kpi-value blue">${activeClosersThisWeek}</div><div class="kpi-sub">≥ 1 RDV cette semaine</div></div>
+    <div class="stats-kpi"><div class="kpi-label">Closers actifs</div><div class="kpi-value blue">${activeClosersThisWeek}</div><div class="kpi-sub">≥ 1 RDV cette semaine</div></div>
     <div class="stats-kpi"><div class="kpi-label">Moy. RDV / closer</div><div class="kpi-value green">${avgRdvPerCloser}</div><div class="kpi-sub">cette semaine</div></div>
     <div class="stats-kpi"><div class="kpi-label">Moy. / semaine</div><div class="kpi-value">${avgWeek}</div><div class="kpi-sub">sur la période</div></div>
     <div class="stats-kpi"><div class="kpi-label">Top closer</div><div class="kpi-value orange" style="font-size:15px;margin-top:4px">${topCloser}</div></div>`;
@@ -2056,10 +2069,19 @@ function applyStatsFilters() {
   if (!statsRawData) return;
   const filtered = statsFilterBookings(statsRawData);
   const gran = document.getElementById('statGran')?.value || 'week';
-  renderStatsKPIs(filtered, gran);
+  // KPIs : data complète pour semaine/mois courants, filtered pour total/top/moy période
+  renderStatsKPIs(statsRawData, filtered, gran);
   renderStatsTimeline(filtered, gran);
   renderStatsCloserChart(filtered);
   renderStatsEventChart(filtered);
+  // Mettre à jour les date pickers pour refléter la plage visible
+  if (filtered.length) {
+    const dates  = filtered.map(b => b.date).sort();
+    const fromEl = document.getElementById('statDateFrom');
+    const toEl   = document.getElementById('statDateTo');
+    if (fromEl && !fromEl.value) fromEl.value = dates[0];
+    if (toEl   && !toEl.value)   toEl.value   = dates[dates.length - 1];
+  }
 }
 
 async function syncAndReloadStats() {
@@ -2097,20 +2119,17 @@ async function reloadStats() {
   document.getElementById('statsKpiRow').innerHTML = '<div class="stats-loading">⏳ Chargement des données…</div>';
   statsDestroyChart('timeline'); statsDestroyChart('closer'); statsDestroyChart('event');
   try {
-    const months = document.getElementById('statRange')?.value || 3;
-    const r = await fetch(`/api/stats?months=${months}`);
+    // Toujours charger 12 mois — la période sélectionnée filtre côté client uniquement
+    const r = await fetch('/api/stats?months=12');
     if (!r.ok) throw new Error(`API ${r.status}`);
     const data = await r.json();
     statsRawData = data.bookings || [];
     statsPopulateFilters(statsRawData);
-    // Caler les date pickers sur la plage complète des données chargées
-    if (statsRawData.length) {
-      const dates  = statsRawData.map(b => b.date).sort();
-      const fromEl = document.getElementById('statDateFrom');
-      const toEl   = document.getElementById('statDateTo');
-      if (fromEl) fromEl.value = dates[0];
-      if (toEl)   toEl.value   = dates[dates.length - 1];
-    }
+    // Réinitialiser les date pickers (seront mis à jour par applyStatsFilters selon la période)
+    const fromEl = document.getElementById('statDateFrom');
+    const toEl   = document.getElementById('statDateTo');
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
     applyStatsFilters();
   } catch(e) {
     document.getElementById('statsKpiRow').innerHTML = `<div class="stats-empty">⚠ Erreur de chargement : ${e.message}</div>`;
