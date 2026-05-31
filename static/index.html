@@ -270,7 +270,32 @@
   }
 
   /* ── Prospects search page ── */
-  #prospectsArea { display:none; padding:24px; max-width:1000px; margin:0 auto; }
+  #prospectsArea { display:none; padding:24px; max-width:1100px; margin:0 auto; }
+  .live-feed-section { margin-bottom:28px; }
+  .live-feed-header { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .live-feed-title { font-size:15px; font-weight:700; color:#0f172a; }
+  .live-dot { width:8px; height:8px; border-radius:50%; background:#22c55e;
+    box-shadow:0 0 0 3px rgba(34,197,94,.2); animation:pulse-live 1.8s infinite; }
+  @keyframes pulse-live { 0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,.2)} 50%{box-shadow:0 0 0 6px rgba(34,197,94,.05)} }
+  .live-feed-count { font-size:11px; color:#64748b; margin-left:auto; }
+  .live-cards { display:flex; flex-direction:column; gap:8px; }
+  .live-card { display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center;
+    background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px;
+    box-shadow:0 1px 3px rgba(0,0,0,.04); transition:box-shadow .15s; }
+  .live-card:hover { box-shadow:0 3px 10px rgba(0,0,0,.08); }
+  .live-card.new { border-left:3px solid #22c55e; animation:slideIn .3s ease; }
+  @keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+  .live-card-icon { width:36px; height:36px; border-radius:50%; background:#dcfce7;
+    display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+  .live-card-body { min-width:0; }
+  .live-card-lead { font-weight:700; font-size:14px; color:#0f172a; }
+  .live-card-email { font-size:12px; color:#64748b; margin-top:1px; }
+  .live-card-rdv { font-size:12px; color:#3b82f6; margin-top:3px; }
+  .live-card-meta { text-align:right; flex-shrink:0; }
+  .live-card-closer { font-size:12px; font-weight:600; color:#6d28d9; }
+  .live-card-time { font-size:11px; color:#94a3b8; margin-top:2px; }
+  .live-empty { text-align:center; padding:32px; color:#94a3b8; font-size:13px;
+    background:#fff; border-radius:10px; border:1px dashed #e2e8f0; }
   .prospects-search-wrap {
     display:flex; gap:10px; margin-bottom:24px;
     background:#fff; border-radius:10px; padding:14px 16px;
@@ -417,6 +442,20 @@
 
 <!-- ── Page Prospects ────────────────────────────────────────────────── -->
 <div id="prospectsArea">
+
+  <!-- ── Flux temps réel ──────────────────────────────────────────────────── -->
+  <div class="live-feed-section">
+    <div class="live-feed-header">
+      <span class="live-dot"></span>
+      <span class="live-feed-title">Nouvelles prises de RDV</span>
+      <span class="live-feed-count" id="liveFeedCount">Chargement…</span>
+    </div>
+    <div class="live-cards" id="liveFeedCards">
+      <div class="live-empty">⏳ Chargement du flux…</div>
+    </div>
+  </div>
+
+  <!-- ── Recherche ─────────────────────────────────────────────────────────── -->
   <div class="prospects-search-wrap">
     <input type="text" id="prospectsInput" class="prospects-search-input"
       placeholder="Rechercher par nom ou email…" onkeydown="if(event.key==='Enter') searchProspects()">
@@ -1532,7 +1571,10 @@ function switchTab(tab) {
 
   if (isProspects) {
     setTimeout(() => document.getElementById('prospectsInput')?.focus(), 50);
+    startLiveFeed();
     return;
+  } else {
+    stopLiveFeed();
   }
 
   // Restaurer le printArea (calendrier)
@@ -2046,6 +2088,88 @@ async function searchProspects() {
   } catch(e) {
     results.innerHTML = `<div class="prospects-empty">⚠ Erreur : ${e.message}</div>`;
   }
+}
+
+// ── Flux temps réel : nouvelles prises de RDV ────────────────────────────────
+let _liveFeedLastCount = -1;
+let _liveFeedInterval  = null;
+
+function timeAgo(isoStr) {
+  if (!isoStr) return '';
+  const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
+  if (diff < 60)  return `il y a ${diff}s`;
+  if (diff < 3600) return `il y a ${Math.floor(diff/60)}min`;
+  if (diff < 86400) return `il y a ${Math.floor(diff/3600)}h`;
+  return `il y a ${Math.floor(diff/86400)}j`;
+}
+
+function formatRdvDate(date, time) {
+  if (!date) return '—';
+  const d = new Date(date + 'T12:00:00');
+  const DAYS = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  const MONTHS = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}${time ? ' à ' + time : ''}`;
+}
+
+async function loadLiveFeed() {
+  try {
+    const r = await fetch('/api/recent_bookings');
+    if (!r.ok) return;
+    const data = await r.json();
+    const bookings = data.bookings || [];
+    const container = document.getElementById('liveFeedCards');
+    const countEl   = document.getElementById('liveFeedCount');
+    if (!container) return;
+
+    if (countEl) {
+      countEl.textContent = bookings.length === 0
+        ? 'Aucun RDV reçu depuis le dernier démarrage'
+        : `${bookings.length} RDV reçu${bookings.length > 1 ? 's' : ''} depuis le démarrage`;
+    }
+
+    if (bookings.length === 0) {
+      container.innerHTML = `<div class="live-empty">📭 Aucune prise de RDV reçue depuis le démarrage du serveur.<br><span style="font-size:11px;margin-top:4px;display:block">Les prochains RDVs bookés via Calendly apparaîtront ici automatiquement.</span></div>`;
+      return;
+    }
+
+    const isNew = bookings.length !== _liveFeedLastCount;
+    _liveFeedLastCount = bookings.length;
+
+    const colorMap = {};
+    (window.lastData?.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+
+    container.innerHTML = bookings.map((b, idx) => {
+      const color     = colorMap[b.member_name] || '#6d28d9';
+      const dispName  = getDisplayName(b.member_name);
+      const lead      = b.lead_name  || '—';
+      const email     = b.lead_email || '';
+      const rdvDate   = formatRdvDate(b.date, b.start_time);
+      const received  = timeAgo(b.received_at);
+      const isNewCard = isNew && idx === 0 ? ' new' : '';
+      return `<div class="live-card${isNewCard}">
+        <div class="live-card-icon">📅</div>
+        <div class="live-card-body">
+          <div class="live-card-lead">${lead}</div>
+          ${email ? `<div class="live-card-email">✉ ${email}</div>` : ''}
+          <div class="live-card-rdv">📌 ${b.event_type || '—'} · ${rdvDate}</div>
+        </div>
+        <div class="live-card-meta">
+          <div class="live-card-closer" style="color:${color}">${dispName}</div>
+          <div class="live-card-time">${received}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { /* silencieux */ }
+}
+
+function startLiveFeed() {
+  loadLiveFeed();
+  if (_liveFeedInterval) clearInterval(_liveFeedInterval);
+  _liveFeedInterval = setInterval(loadLiveFeed, 30000); // toutes les 30s
+}
+
+function stopLiveFeed() {
+  if (_liveFeedInterval) { clearInterval(_liveFeedInterval); _liveFeedInterval = null; }
 }
 
 async function enrichLeads() {

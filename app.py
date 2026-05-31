@@ -220,6 +220,10 @@ def _auto_sync_loop():
 
 threading.Thread(target=_auto_sync_loop, daemon=True).start()
 
+# ── Flux temps réel : dernières prises de RDV reçues par webhook ──────────────
+from collections import deque
+_recent_bookings = deque(maxlen=50)  # 50 derniers RDVs reçus
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
@@ -393,16 +397,19 @@ def webhook_calendly():
             else:
                 date_str = time_str = ""
 
-            sb_upsert({
-                "event_uri":   scheduled.get("uri", ""),
-                "member_name": closer_name,
-                "lead_name":   payload.get("name", ""),
-                "lead_email":  payload.get("email", ""),
-                "event_type":  scheduled.get("name", ""),
-                "start_time":  time_str,
-                "date":        date_str,
-                "status":      "active",
-            })
+            booking = {
+                "event_uri":    scheduled.get("uri", ""),
+                "member_name":  closer_name,
+                "lead_name":    payload.get("name", ""),
+                "lead_email":   payload.get("email", ""),
+                "event_type":   scheduled.get("name", ""),
+                "start_time":   time_str,
+                "date":         date_str,
+                "status":       "active",
+                "received_at":  datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            sb_upsert(booking)
+            _recent_bookings.appendleft(booking)  # le plus récent en tête
 
         elif ev_type == "invitee.canceled":
             scheduled = payload.get("scheduled_event", {})
@@ -413,6 +420,11 @@ def webhook_calendly():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/recent_bookings")
+def recent_bookings():
+    """Retourne les 50 derniers RDVs reçus par webhook (depuis le dernier démarrage)."""
+    return jsonify({"bookings": list(_recent_bookings), "count": len(_recent_bookings)})
 
 @app.route("/api/event_type_names")
 def event_type_names():
