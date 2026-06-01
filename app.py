@@ -441,14 +441,19 @@ def recent_bookings():
                 params={
                     "date":       f"gte.{cutoff}",
                     "status":     "eq.active",
-                    "select":     "event_uri,member_name,lead_name,lead_email,event_type,date,start_time",
+                    "select":     "event_uri,member_name,lead_name,lead_email,event_type,date,start_time,created_at",
                     "order":      "date.desc,start_time.desc",
                     "limit":      "50",
                 },
                 timeout=8
             )
             if r.ok:
-                sb_bookings = r.json()
+                raw = r.json()
+                # Mapper created_at → received_at pour uniformiser l'affichage frontend
+                for b in raw:
+                    if b.get("created_at") and not b.get("received_at"):
+                        b["received_at"] = b["created_at"]
+                sb_bookings = raw
         except Exception:
             pass
 
