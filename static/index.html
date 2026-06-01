@@ -2098,18 +2098,45 @@ let _liveFeedInterval  = null;
 function timeAgo(isoStr) {
   if (!isoStr) return '';
   const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
-  if (diff < 60)  return `il y a ${diff}s`;
+  if (diff < 60)   return `il y a ${diff}s`;
   if (diff < 3600) return `il y a ${Math.floor(diff/60)}min`;
   if (diff < 86400) return `il y a ${Math.floor(diff/3600)}h`;
   return `il y a ${Math.floor(diff/86400)}j`;
 }
 
+function formatDatetime(isoStr) {
+  // Formate un timestamp UTC en date/heure Paris lisible
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  const paris = new Date(d.getTime() + 2 * 3600 * 1000); // UTC+2
+  const DAYS   = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  const MONTHS = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const hh = String(paris.getUTCHours()).padStart(2,'0');
+  const mm = String(paris.getUTCMinutes()).padStart(2,'0');
+  return `${DAYS[paris.getUTCDay()]} ${paris.getUTCDate()} ${MONTHS[paris.getUTCMonth()]} à ${hh}:${mm}`;
+}
+
 function formatRdvDate(date, time) {
   if (!date) return '—';
   const d = new Date(date + 'T12:00:00');
-  const DAYS = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  const DAYS   = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   const MONTHS = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}${time ? ' à ' + time : ''}`;
+}
+
+function leadTime(receivedIso, rdvDate, rdvTime) {
+  // Calcule le délai entre la prise de RDV et le RDV lui-même
+  if (!receivedIso || !rdvDate) return null;
+  const rdvStr  = rdvDate + 'T' + (rdvTime || '12:00') + ':00';
+  const rdvMs   = new Date(rdvStr).getTime();
+  const recvMs  = new Date(receivedIso).getTime() + 2 * 3600 * 1000; // UTC→Paris
+  const diffMin = Math.round((rdvMs - recvMs) / 60000);
+  if (diffMin < 0)   return null; // RDV déjà passé
+  if (diffMin < 60)  return `${diffMin} min avant le RDV`;
+  if (diffMin < 1440) return `${Math.round(diffMin/60)}h avant le RDV`;
+  const days = Math.floor(diffMin / 1440);
+  const hrs  = Math.round((diffMin % 1440) / 60);
+  return hrs > 0 ? `${days}j ${hrs}h avant le RDV` : `${days}j avant le RDV`;
 }
 
 async function loadLiveFeed() {
@@ -2140,23 +2167,29 @@ async function loadLiveFeed() {
     (window.lastData?.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
 
     container.innerHTML = bookings.map((b, idx) => {
-      const color     = colorMap[b.member_name] || '#6d28d9';
-      const dispName  = getDisplayName(b.member_name);
-      const lead      = b.lead_name  || '—';
-      const email     = b.lead_email || '';
-      const rdvDate   = formatRdvDate(b.date, b.start_time);
-      const received  = timeAgo(b.received_at);
-      const isNewCard = isNew && idx === 0 ? ' new' : '';
+      const color       = colorMap[b.member_name] || '#6d28d9';
+      const dispName    = getDisplayName(b.member_name);
+      const lead        = b.lead_name  || '—';
+      const email       = b.lead_email || '';
+      const rdvDate     = formatRdvDate(b.date, b.start_time);
+      const receivedFmt = formatDatetime(b.received_at);
+      const receivedAgo = timeAgo(b.received_at);
+      const delay       = leadTime(b.received_at, b.date, b.start_time);
+      const isNewCard   = isNew && idx === 0 ? ' new' : '';
       return `<div class="live-card${isNewCard}">
         <div class="live-card-icon">📅</div>
         <div class="live-card-body">
           <div class="live-card-lead">${lead}</div>
           ${email ? `<div class="live-card-email">✉ ${email}</div>` : ''}
           <div class="live-card-rdv">📌 ${b.event_type || '—'} · ${rdvDate}</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:3px">
+            📥 Prise le ${receivedFmt}
+            ${delay ? `· <span style="color:#f59e0b;font-weight:600">⏱ ${delay}</span>` : ''}
+          </div>
         </div>
         <div class="live-card-meta">
           <div class="live-card-closer" style="color:${color}">${dispName}</div>
-          <div class="live-card-time">${received}</div>
+          <div class="live-card-time">${receivedAgo}</div>
         </div>
       </div>`;
     }).join('');
