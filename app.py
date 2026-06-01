@@ -423,8 +423,42 @@ def webhook_calendly():
 
 @app.route("/api/recent_bookings")
 def recent_bookings():
-    """Retourne les 50 derniers RDVs reçus par webhook (depuis le dernier démarrage)."""
-    return jsonify({"bookings": list(_recent_bookings), "count": len(_recent_bookings)})
+    """Retourne les 50 derniers RDVs.
+    - Si webhooks en mémoire : les retourne en priorité (ont received_at précis)
+    - Sinon fallback Supabase : derniers bookings par date/heure desc
+    - Toujours enrichit avec les bookings Supabase des 7 derniers jours
+    """
+    mem = list(_recent_bookings)  # webhooks reçus depuis le démarrage
+
+    # Fallback / complément Supabase : derniers 50 bookings
+    sb_bookings = []
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+            r = req_http.get(
+                f"{SUPABASE_URL}/rest/v1/bookings",
+                headers=_sb_headers(),
+                params={
+                    "date":       f"gte.{cutoff}",
+                    "status":     "eq.active",
+                    "select":     "event_uri,member_name,lead_name,lead_email,event_type,date,start_time",
+                    "order":      "date.desc,start_time.desc",
+                    "limit":      "50",
+                },
+                timeout=8
+            )
+            if r.ok:
+                sb_bookings = r.json()
+        except Exception:
+            pass
+
+    # Fusionner : webhooks (avec received_at) en tête, puis Supabase pour compléter
+    mem_uris = {b.get("event_uri") for b in mem}
+    for b in sb_bookings:
+        if b.get("event_uri") not in mem_uris:
+            mem.append(b)
+
+    return jsonify({"bookings": mem[:50], "count": len(mem[:50])})
 
 @app.route("/api/event_type_names")
 def event_type_names():

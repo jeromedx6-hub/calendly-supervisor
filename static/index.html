@@ -2172,20 +2172,24 @@ async function loadLiveFeed() {
       const lead        = b.lead_name  || '—';
       const email       = b.lead_email || '';
       const rdvDate     = formatRdvDate(b.date, b.start_time);
-      const receivedFmt = formatDatetime(b.received_at);
-      const receivedAgo = timeAgo(b.received_at);
-      const delay       = leadTime(b.received_at, b.date, b.start_time);
-      const isNewCard   = isNew && idx === 0 ? ' new' : '';
+      const hasReceived  = !!b.received_at;
+      const receivedFmt  = hasReceived ? formatDatetime(b.received_at) : null;
+      const receivedAgo  = hasReceived ? timeAgo(b.received_at) : 'Supabase';
+      const delay        = hasReceived ? leadTime(b.received_at, b.date, b.start_time) : null;
+      const isNewCard    = isNew && idx === 0 ? ' new' : '';
+      const receivedLine = receivedFmt
+        ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px">
+             📥 Prise le ${receivedFmt}
+             ${delay ? `· <span style="color:#f59e0b;font-weight:600">⏱ ${delay}</span>` : ''}
+           </div>`
+        : '';
       return `<div class="live-card${isNewCard}">
         <div class="live-card-icon">📅</div>
         <div class="live-card-body">
           <div class="live-card-lead">${lead}</div>
           ${email ? `<div class="live-card-email">✉ ${email}</div>` : ''}
           <div class="live-card-rdv">📌 ${b.event_type || '—'} · ${rdvDate}</div>
-          <div style="font-size:11px;color:#94a3b8;margin-top:3px">
-            📥 Prise le ${receivedFmt}
-            ${delay ? `· <span style="color:#f59e0b;font-weight:600">⏱ ${delay}</span>` : ''}
-          </div>
+          ${receivedLine}
         </div>
         <div class="live-card-meta">
           <div class="live-card-closer" style="color:${color}">${dispName}</div>
