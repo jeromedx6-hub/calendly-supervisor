@@ -459,7 +459,17 @@
     <div class="live-feed-header">
       <span class="live-dot"></span>
       <span class="live-feed-title">Nouvelles prises de RDV</span>
-      <span class="live-feed-count" id="liveFeedCount">Chargement…</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+        <select id="liveFeedEventFilter" onchange="applyLiveFeedFilter()"
+          style="height:30px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#1e293b;padding:0 8px;font-size:11px;font-weight:500;cursor:pointer;">
+          <option value="all">Tous les events</option>
+        </select>
+        <button onclick="exportBookings()" title="Exporter tous les bookings en CSV"
+          style="height:30px;border-radius:6px;border:1px solid #0f172a;background:#0f172a;color:#fff;padding:0 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">
+          ⬇ Export CSV
+        </button>
+        <span class="live-feed-count" id="liveFeedCount">Chargement…</span>
+      </div>
     </div>
     <div class="live-cards" id="liveFeedCards">
       <div class="live-empty">⏳ Chargement du flux…</div>
@@ -2094,6 +2104,7 @@ async function searchProspects() {
 // ── Flux temps réel : nouvelles prises de RDV ────────────────────────────────
 let _liveFeedLastCount = -1;
 let _liveFeedInterval  = null;
+let _liveFeedAllData   = [];   // cache complet pour filtre client-side
 
 function timeAgo(isoStr) {
   if (!isoStr) return '';
@@ -2139,39 +2150,22 @@ function leadTime(receivedIso, rdvDate, rdvTime) {
   return hrs > 0 ? `${days}j ${hrs}h avant le RDV` : `${days}j avant le RDV`;
 }
 
-async function loadLiveFeed() {
+function renderLiveFeedCards(bookings, isNew) {
+  const container = document.getElementById('liveFeedCards');
+  if (!container) return;
+  if (!bookings || bookings.length === 0) {
+    container.innerHTML = `<div class="live-empty">📭 Aucune prise de RDV pour ce filtre.</div>`;
+    return;
+  }
   try {
-    const r = await fetch('/api/recent_bookings');
-    if (!r.ok) return;
-    const data = await r.json();
-    const bookings = data.bookings || [];
-    const container = document.getElementById('liveFeedCards');
-    const countEl   = document.getElementById('liveFeedCount');
-    if (!container) return;
-
-    if (countEl) {
-      countEl.textContent = bookings.length === 0
-        ? 'Aucun RDV reçu depuis le dernier démarrage'
-        : `${bookings.length} RDV reçu${bookings.length > 1 ? 's' : ''} depuis le démarrage`;
-    }
-
-    if (bookings.length === 0) {
-      container.innerHTML = `<div class="live-empty">📭 Aucune prise de RDV reçue depuis le démarrage du serveur.<br><span style="font-size:11px;margin-top:4px;display:block">Les prochains RDVs bookés via Calendly apparaîtront ici automatiquement.</span></div>`;
-      return;
-    }
-
-    const isNew = bookings.length !== _liveFeedLastCount;
-    _liveFeedLastCount = bookings.length;
-
     const colorMap = {};
     (window.lastData?.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
-
     container.innerHTML = bookings.map((b, idx) => {
-      const color       = colorMap[b.member_name] || '#6d28d9';
-      const dispName    = getDisplayName(b.member_name);
-      const lead        = b.lead_name  || '—';
-      const email       = b.lead_email || '';
-      const rdvDate     = formatRdvDate(b.date, b.start_time);
+      const color        = colorMap[b.member_name] || '#6d28d9';
+      const dispName     = getDisplayName(b.member_name);
+      const lead         = b.lead_name  || '—';
+      const email        = b.lead_email || '';
+      const rdvDate      = formatRdvDate(b.date, b.start_time);
       const hasReceived  = !!b.received_at;
       const receivedFmt  = hasReceived ? formatDatetime(b.received_at) : null;
       const receivedAgo  = hasReceived ? timeAgo(b.received_at) : 'Supabase';
@@ -2197,7 +2191,71 @@ async function loadLiveFeed() {
         </div>
       </div>`;
     }).join('');
-  } catch(e) { /* silencieux */ }
+  } catch(e) { console.error('[LiveFeed] render error', e); }
+}
+
+async function loadLiveFeed() {
+  try {
+    const r = await fetch('/api/recent_bookings');
+    if (!r.ok) return;
+    const data = await r.json();
+    const bookings = data.bookings || [];
+
+    const isNew = bookings.length > _liveFeedLastCount && _liveFeedLastCount >= 0;
+    _liveFeedLastCount = bookings.length;
+    _liveFeedAllData   = bookings;
+
+    // Mettre à jour le compteur
+    const countEl = document.getElementById('liveFeedCount');
+    if (countEl) countEl.textContent = `${bookings.length} RDV`;
+
+    // Peupler le filtre event_type (une seule fois si déjà rempli)
+    const sel = document.getElementById('liveFeedEventFilter');
+    if (sel) {
+      const currentVal = sel.value;
+      const types = [...new Set(bookings.map(b => b.event_type).filter(Boolean))].sort();
+      // Reconstruire seulement si la liste a changé
+      const existing = [...sel.options].slice(1).map(o => o.value);
+      const changed  = types.length !== existing.length || types.some((t,i) => t !== existing[i]);
+      if (changed) {
+        while (sel.options.length > 1) sel.remove(1);
+        types.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t; opt.textContent = t;
+          sel.appendChild(opt);
+        });
+        // Restaurer la sélection précédente si elle existe encore
+        if (types.includes(currentVal)) sel.value = currentVal;
+      }
+    }
+
+    applyLiveFeedFilter(isNew);
+  } catch(e) {
+    console.error('[LiveFeed] fetch error', e);
+  }
+}
+
+function applyLiveFeedFilter(isNew) {
+  const sel      = document.getElementById('liveFeedEventFilter');
+  const filter   = sel ? sel.value : 'all';
+  const filtered = filter === 'all'
+    ? _liveFeedAllData
+    : _liveFeedAllData.filter(b => b.event_type === filter);
+  const countEl  = document.getElementById('liveFeedCount');
+  if (countEl) {
+    countEl.textContent = filter === 'all'
+      ? `${_liveFeedAllData.length} RDV`
+      : `${filtered.length} / ${_liveFeedAllData.length} RDV`;
+  }
+  renderLiveFeedCards(filtered, !!isNew);
+}
+
+function exportBookings() {
+  const sel    = document.getElementById('liveFeedEventFilter');
+  const filter = sel ? sel.value : 'all';
+  let url = '/api/export_bookings';
+  if (filter && filter !== 'all') url += `?event_type=${encodeURIComponent(filter)}`;
+  window.open(url, '_blank');
 }
 
 function startLiveFeed() {
