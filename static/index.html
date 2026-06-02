@@ -2298,13 +2298,15 @@ function applyStatsFilters() {
   renderStatsTimeline(filtered, gran);
   renderStatsCloserChart(filtered);
   renderStatsEventChart(filtered);
-  // Mettre à jour les date pickers pour refléter la plage visible
+  // NB: on ne remplit PAS automatiquement statDateTo — il filtre seulement
+  // quand l'utilisateur le saisit manuellement. L'auto-set provoquait un
+  // blocage à la dernière date du chargement initial, masquant les nouvelles
+  // données après sync.
   if (filtered.length) {
     const dates  = filtered.map(b => b.date).sort();
     const fromEl = document.getElementById('statDateFrom');
-    const toEl   = document.getElementById('statDateTo');
     if (fromEl && !fromEl.value) fromEl.value = dates[0];
-    if (toEl   && !toEl.value)   toEl.value   = dates[dates.length - 1];
+    // statDateTo intentionnellement non auto-rempli
   }
 }
 
