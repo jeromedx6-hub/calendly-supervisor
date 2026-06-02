@@ -1816,8 +1816,10 @@ function renderStatsTimeline(bookings, gran) {
   const colorMap = {};
   (window.lastData?.user_order || closers).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
 
-  // Construire les périodes (toutes, même à 0)
+  // Construire les périodes (toutes, même à 0) + toujours inclure la période courante
+  const todayForPeriod = new Date().toISOString().slice(0, 10);
   const periodSet = new Set(bookings.map(b => statsPeriodKey(b.date, gran)));
+  periodSet.add(statsPeriodKey(todayForPeriod, gran)); // semaine/mois courant toujours visible
   const periods   = [...periodSet].sort();
 
   // Dataset par closer
@@ -1981,8 +1983,10 @@ function renderStatsEventChart(bookings) {
   bookings.forEach(b => { const k = b.event_type || 'Inconnu'; totalByEvent[k] = (totalByEvent[k]||0)+1; });
   const eventTypes = Object.entries(totalByEvent).sort((a,b)=>b[1]-a[1]).map(([k])=>k);
 
-  // Périodes (axe X)
+  // Périodes (axe X) — toujours inclure la période courante
+  const todayForPeriodEvt = new Date().toISOString().slice(0, 10);
   const periodSet = new Set(bookings.map(b => statsPeriodKey(b.date, gran)));
+  periodSet.add(statsPeriodKey(todayForPeriodEvt, gran));
   const periods   = [...periodSet].sort();
 
   // Un dataset par event type (stacked)
