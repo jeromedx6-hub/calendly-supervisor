@@ -159,7 +159,7 @@ def get_activity_status() -> dict:
         except Exception:
             has_et = False
 
-        active = has_hours and has_et
+        active = has_hours or has_et   # actif si horaires OU event types configurés
         status[m["name"]] = {"active": active, "has_hours": has_hours, "has_event_types": has_et}
 
     cache_set(ckey, status, ttl=86400)
