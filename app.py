@@ -277,6 +277,46 @@ def events_next7():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/export_bookings")
+def export_bookings():
+    """Exporte tous les bookings Supabase en CSV. Filtres optionnels: event_type, member_name, date_from, date_to."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return jsonify({"error": "Supabase non configuré"}), 500
+    try:
+        import csv, io
+        params = {
+            "status": "eq.active",
+            "select": "date,start_time,member_name,lead_name,lead_email,event_type,event_uri,created_at",
+            "order":  "date.desc,start_time.desc",
+            "limit":  "10000",
+        }
+        et   = request.args.get("event_type", "").strip()
+        mn   = request.args.get("member_name", "").strip()
+        dfrom = request.args.get("date_from", "").strip()
+        dto   = request.args.get("date_to", "").strip()
+        if et:    params["event_type"]  = f"eq.{et}"
+        if mn:    params["member_name"] = f"eq.{mn}"
+        if dfrom: params["date"]        = f"gte.{dfrom}"
+        if dto:   params["date"]        = params.get("date", "") or f"lte.{dto}"
+
+        r = req_http.get(f"{SUPABASE_URL}/rest/v1/bookings", headers=_sb_headers(), params=params, timeout=20)
+        bookings = r.json() if r.ok else []
+
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=["date","start_time","lead_name","lead_email","event_type","member_name","event_uri","created_at"], extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(bookings)
+        csv_bytes = buf.getvalue().encode("utf-8-sig")  # BOM pour Excel
+
+        from flask import Response
+        return Response(
+            csv_bytes,
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=bookings_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.csv"}
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/search_leads")
 def search_leads():
     """Recherche de prospects par nom ou email dans Supabase."""
@@ -313,26 +353,41 @@ def invitees():
 
 @app.route("/api/stats")
 def stats_data():
-    """Retourne les bookings Supabase pour la page statistiques (6 mois par défaut)."""
+    """Retourne les bookings Supabase pour la page statistiques.
+    Pagine par chunks de 1000 pour contourner la limite Supabase (plan gratuit = 1000 lignes/requête)."""
     try:
         if not SUPABASE_URL or not SUPABASE_KEY:
             return jsonify({"error": "Supabase non configuré", "bookings": []}), 200
         months_back = min(int(request.args.get("months", 6)), 24)
         start_date  = (datetime.now() - timedelta(days=months_back * 31)).strftime("%Y-%m-%d")
-        r = req_http.get(
-            f"{SUPABASE_URL}/rest/v1/bookings",
-            headers=_sb_headers(),
-            params={
-                "date":   f"gte.{start_date}",
-                "status": "eq.active",
-                "select": "date,member_name,event_type,start_time",
-                "order":  "date.asc",
-                "limit":  "10000",
-            },
-            timeout=15
-        )
-        bookings = r.json() if r.ok else []
-        return jsonify({"bookings": bookings, "count": len(bookings), "start_date": start_date})
+
+        PAGE = 1000
+        all_bookings = []
+        offset = 0
+        while True:
+            r = req_http.get(
+                f"{SUPABASE_URL}/rest/v1/bookings",
+                headers={**_sb_headers(), "Range-Unit": "items",
+                         "Range": f"{offset}-{offset + PAGE - 1}"},
+                params={
+                    "date":   f"gte.{start_date}",
+                    "status": "eq.active",
+                    "select": "date,member_name,event_type,start_time",
+                    "order":  "date.asc",
+                },
+                timeout=15
+            )
+            if not r.ok:
+                break
+            chunk = r.json()
+            if not chunk:
+                break
+            all_bookings.extend(chunk)
+            if len(chunk) < PAGE:
+                break          # dernière page
+            offset += PAGE
+
+        return jsonify({"bookings": all_bookings, "count": len(all_bookings), "start_date": start_date})
     except Exception as e:
         return jsonify({"error": str(e), "bookings": []}), 500
 
