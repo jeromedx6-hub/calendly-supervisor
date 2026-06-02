@@ -180,11 +180,8 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
     day_labels  = [d.strftime("%a %d %b") for d in week_days]
 
     all_members = get_members()
-    activity    = cache_get(f"activity_{datetime.utcnow().strftime('%Y-%m-%d')}") or {}
-    members     = [m for m in all_members if activity.get(m["name"], {}).get("active", True)]
-    if not members:
-        members = all_members  # fallback si activité pas encore calculée
-    user_grids = {}
+    members     = all_members  # Tous les membres, actifs ou non (l'activité gère seulement le dot couleur en UI)
+    user_grids  = {}
 
     for member in members:
         user_uri = member["uri"]
@@ -627,10 +624,7 @@ def get_events_week_data(week_offset: int) -> dict:
     end_utc   = sunday.strftime("%Y-%m-%dT23:59:59.000000Z")
 
     all_members  = get_members()
-    activity     = cache_get(f"activity_{datetime.utcnow().strftime('%Y-%m-%d')}") or {}
-    members      = [m for m in all_members if activity.get(m["name"], {}).get("active", True)]
-    if not members:
-        members = all_members
+    members      = all_members  # Tous les membres, actifs ou non
 
     events_by_member = _build_events_by_member_org(start_utc, end_utc, members)
 
@@ -664,10 +658,7 @@ def get_events_next7_data() -> dict:
     end_utc   = end.strftime("%Y-%m-%dT23:59:59.000000Z")
 
     all_members = get_members()
-    activity    = cache_get(f"activity_{today.strftime('%Y-%m-%d')}") or {}
-    members     = [m for m in all_members if activity.get(m["name"], {}).get("active", True)]
-    if not members:
-        members = all_members
+    members     = all_members  # Tous les membres, actifs ou non
 
     events_by_member = _build_events_by_member_org(start_utc, end_utc, members)
 
