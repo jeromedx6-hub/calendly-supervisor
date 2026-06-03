@@ -212,10 +212,10 @@ def _run_supabase_sync():
 
 def _auto_sync_loop():
     import time
-    time.sleep(120)  # attendre 2 min après le démarrage
-    _run_supabase_sync()  # premier sync au démarrage
+    time.sleep(30)           # laisser Flask démarrer (30s suffisent)
+    _run_supabase_sync()     # sync immédiat au démarrage → comble les webhooks ratés
     while True:
-        time.sleep(6 * 3600)  # toutes les 6 heures
+        time.sleep(2 * 3600) # sync toutes les 2h (au lieu de 6h)
         _run_supabase_sync()
 
 threading.Thread(target=_auto_sync_loop, daemon=True).start()
