@@ -185,10 +185,16 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
 
     for member in members:
         user_uri = member["uri"]
-        sched    = get_schedule(user_uri)
-        busy     = get_busy(user_uri, start_utc, end_utc)
-        wh       = sched["working_hours"]
-        do       = sched["date_overrides"]
+        try:
+            sched = get_schedule(user_uri)
+            busy  = get_busy(user_uri, start_utc, end_utc)
+            wh    = sched["working_hours"]
+            do    = sched["date_overrides"]
+        except Exception as ex:
+            print(f"[Calendar] skip {member['name']}: {ex}")
+            # Membre sans horaires : tous les slots gris (pas de dispo)
+            user_grids[member["name"]] = [["grey"] * len(SLOT_TIMES) for _ in week_days]
+            continue
 
         user_grid = []
         for day_paris in week_days:
