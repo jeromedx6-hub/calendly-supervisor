@@ -446,7 +446,7 @@
   <!-- ── Recherche ─────────────────────────────────────────────────────────── -->
   <div class="prospects-search-wrap">
     <input type="text" id="prospectsInput" class="prospects-search-input"
-      placeholder="Rechercher par nom ou email…" onkeydown="if(event.key==='Enter') searchProspects()">
+      placeholder="Rechercher par nom ou email…" onkeydown="if(event.key==='Enter') searchProspects()" autocomplete="off">
     <button class="prospects-search-btn" onclick="searchProspects()">🔍 Rechercher</button>
     <button id="btnEnrichLeads" onclick="enrichLeads()" style="height:38px;border-radius:8px;border:none;background:#065f46;color:#fff;padding:0 14px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;" title="Récupère les leads manquants depuis Calendly">↻ Compléter les leads</button>
   </div>
@@ -2072,7 +2072,16 @@ async function searchProspects() {
     info.textContent = list.length ? `${list.length} résultat${list.length > 1 ? 's' : ''} trouvé${list.length > 1 ? 's' : ''}` : '';
 
     if (!list.length) {
-      results.innerHTML = `<div class="prospects-empty">Aucun prospect trouvé pour "<strong>${q}</strong>".</div>`;
+      results.innerHTML = `
+        <div class="prospects-empty" style="text-align:center;padding:24px 16px">
+          <div style="margin-bottom:10px">Aucun résultat pour "<strong>${q}</strong>".</div>
+          <div style="font-size:12px;color:#94a3b8;margin-bottom:14px">
+            ⚠ Certains leads peuvent avoir un nom vide en base — la recherche par téléphone n'est pas supportée.
+          </div>
+          <button onclick="enrichLeads()" style="height:32px;border-radius:6px;border:none;background:#065f46;color:#fff;padding:0 14px;font-size:12px;font-weight:600;cursor:pointer">
+            ↻ Compléter les leads manquants
+          </button>
+        </div>`;
       return;
     }
 

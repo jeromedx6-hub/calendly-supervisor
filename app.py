@@ -330,16 +330,22 @@ def search_leads():
             f"{SUPABASE_URL}/rest/v1/bookings",
             headers=_sb_headers(),
             params={
-                "or":    f"(lead_name.ilike.*{q}*,lead_email.ilike.*{q}*)",
+                "or":     f"(lead_name.ilike.*{q}*,lead_email.ilike.*{q}*,member_name.ilike.*{q}*)",
                 "status": "eq.active",
                 "select": "date,start_time,member_name,event_type,lead_name,lead_email,event_uri",
                 "order":  "date.desc",
-                "limit":  "100",
+                "limit":  "200",
             },
             timeout=10
         )
         results = r.json() if r.ok else []
-        return jsonify({"results": results, "count": len(results)})
+        # Dédupliquer par event_uri
+        seen, unique = set(), []
+        for b in results:
+            k = b.get("event_uri", "")
+            if k not in seen:
+                seen.add(k); unique.append(b)
+        return jsonify({"results": unique, "count": len(unique)})
     except Exception as e:
         return jsonify({"error": str(e), "results": []}), 500
 
