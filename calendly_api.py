@@ -17,10 +17,17 @@ def get_key():
 def headers():
     return {"Authorization": f"Bearer {get_key()}", "Content-Type": "application/json"}
 
-def api_get(url, params=None):
-    r = requests.get(url, headers=headers(), params=params, timeout=10)
-    r.raise_for_status()
-    return r.json()
+def api_get(url, params=None, _retry=3):
+    """GET Calendly avec retry automatique sur 429 (rate limit)."""
+    for attempt in range(_retry):
+        r = requests.get(url, headers=headers(), params=params, timeout=10)
+        if r.status_code == 429:
+            wait = int(r.headers.get("Retry-After", 5)) + 1
+            time.sleep(wait)
+            continue
+        r.raise_for_status()
+        return r.json()
+    raise Exception(f"Rate limit persistant après {_retry} tentatives : {url}")
 
 def api_get_all_pages(url, params=None):
     """Récupère toutes les pages d'un endpoint paginé Calendly."""
@@ -743,7 +750,8 @@ def get_all_bookings_for_import(days_past: int = 90, days_future: int = 30) -> l
             print(f"[import] build error: {ex}")
             return None
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    # 3 workers max pour éviter le rate limit Calendly sur les invitees (~100 req/min)
+    with ThreadPoolExecutor(max_workers=3) as executor:
         results = list(executor.map(build_booking, raw_events))
 
     return [b for b in results if b is not None]

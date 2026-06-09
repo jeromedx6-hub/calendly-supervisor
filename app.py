@@ -192,7 +192,7 @@ def _run_supabase_sync():
     if not SUPABASE_URL or not SUPABASE_KEY:
         return
     try:
-        bookings = calendly_api.get_all_bookings_for_import(days_past=90, days_future=30)
+        bookings = calendly_api.get_all_bookings_for_import(days_past=180, days_future=30)
         seen, unique = set(), []
         for b in bookings:
             k = b.get("event_uri", "")
