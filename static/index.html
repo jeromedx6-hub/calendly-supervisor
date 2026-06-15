@@ -518,6 +518,11 @@
     <h3>Évolution des RDV <span id="statsTimelineLabel"></span></h3>
     <canvas id="chartTimeline" height="90"></canvas>
   </div>
+  <!-- Rythme de prise de RDV (date de création) -->
+  <div class="stats-chart-card" style="margin-top:16px">
+    <h3>Rythme de prise de RDV <span id="statsCreationLabel" style="font-size:13px;font-weight:400;color:#64748b"></span> <span style="font-size:11px;font-weight:400;color:#94a3b8;margin-left:6px">— par date de création</span></h3>
+    <canvas id="chartCreation" height="90"></canvas>
+  </div>
   <!-- Par closer + par event -->
   <div class="stats-charts-row">
     <div class="stats-chart-card">
@@ -2044,6 +2049,128 @@ function toggleAllEvents() {
   btn.style.color      = targetState ? '#475569'  : '#fff';
 }
 
+// ── Graphique : Rythme de prise de RDV (par date de création) ──────────────
+
+function creationDateOf(b) {
+  // Extrait la date Paris (UTC+2) depuis created_at ISO, ou fallback sur date du RDV
+  const raw = b.created_at || b.date;
+  if (!raw) return null;
+  if (raw.length <= 10) return raw; // déjà YYYY-MM-DD
+  const d = new Date(raw);
+  const paris = new Date(d.getTime() + 2 * 3600 * 1000);
+  return paris.toISOString().slice(0, 10);
+}
+
+function statsFilterByCreation(raw) {
+  // Mêmes filtres closer/event/range que statsFilterBookings, mais la plage de dates
+  // s'applique sur created_at (pas sur date du RDV)
+  const closer    = document.getElementById('statCloser')?.value   || 'all';
+  const eventType = document.getElementById('statEvent')?.value    || 'all';
+  const months    = parseInt(document.getElementById('statRange')?.value || 6);
+  const cutoff    = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const dateFrom  = document.getElementById('statDateFrom')?.value || cutoffStr;
+  const dateTo    = document.getElementById('statDateTo')?.value   || '';
+  const from      = dateFrom > cutoffStr ? dateFrom : cutoffStr;
+
+  return raw.filter(b => {
+    const cd = creationDateOf(b);
+    if (!cd) return false;
+    return cd >= from &&
+      (closer    === 'all' || b.member_name === closer) &&
+      (eventType === 'all' || b.event_type  === eventType) &&
+      (!dateTo   || cd <= dateTo);
+  });
+}
+
+function renderStatsCreationChart(rawAll, gran) {
+  statsDestroyChart('creation');
+  const lbl = document.getElementById('statsCreationLabel');
+  if (lbl) lbl.textContent = gran === 'day' ? '— par jour' : gran === 'week' ? '— par semaine' : '— par mois';
+
+  const bookings  = statsFilterByCreation(rawAll);
+  const allClosers = [...new Set(bookings.map(b => b.member_name).filter(Boolean))];
+  const globalOrder = window.lastData?.user_order || allClosers;
+  const closers = globalOrder.filter(c => allClosers.includes(c));
+  const colorMap = {};
+  (window.lastData?.user_order || closers).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+
+  // Périodes par date de création
+  const todayStr  = new Date().toISOString().slice(0, 10);
+  const periodSet = new Set(bookings.map(b => statsPeriodKey(creationDateOf(b), gran)).filter(Boolean));
+  periodSet.add(statsPeriodKey(todayStr, gran));
+  const periods = [...periodSet].sort();
+
+  // Dataset stacked par closer
+  const datasets = closers.map(closer => {
+    const color = colorMap[closer] || '#64748b';
+    return {
+      label:           getDisplayName(closer),
+      data:            periods.map(p =>
+        bookings.filter(b => b.member_name === closer && statsPeriodKey(creationDateOf(b), gran) === p).length
+      ),
+      backgroundColor: color + 'cc',
+      borderColor:     color,
+      borderWidth:     1,
+      borderRadius:    3,
+    };
+  });
+
+  // Totaux par période pour mini-tableau sous l'axe
+  const totals = periods.map(p =>
+    bookings.filter(b => statsPeriodKey(creationDateOf(b), gran) === p).length
+  );
+
+  const xAxisTotalsPlugin = {
+    id: 'xAxisTotalsCreation',
+    afterDraw(chart) {
+      const { ctx: c, scales: { x } } = chart;
+      c.save();
+      c.textBaseline = 'top';
+      c.font = '700 9.5px system-ui, -apple-system, sans-serif';
+      c.strokeStyle = '#e2e8f0'; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(x.left, x.bottom + 4); c.lineTo(x.right, x.bottom + 4); c.stroke();
+      const y = x.bottom + 8;
+      c.textAlign = 'right'; c.fillStyle = '#3b82f6';
+      c.fillText('RDV', x.left - 8, y);
+      c.textAlign = 'center';
+      x.ticks.forEach((_, i) => {
+        c.fillStyle = '#3b82f6';
+        c.fillText(totals[i] ?? '', x.getPixelForTick(i), y);
+      });
+      c.restore();
+    }
+  };
+
+  const ctx = document.getElementById('chartCreation');
+  if (!ctx) return;
+  statsCharts['creation'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: periods.map(p => statsPeriodLabel(p, gran)), datasets },
+    options: {
+      responsive: true,
+      layout: { padding: { bottom: 26 } },
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
+        tooltip: { callbacks: { footer: (items) => { const t = items.reduce((s,i)=>s+i.raw,0); return items.length>1?`Total : ${t}`:''; } } },
+        datalabels: {
+          color: '#fff',
+          font: { size: 10, weight: '700' },
+          formatter: v => v > 0 ? v : '',
+          display: ctx => ctx.dataset.data[ctx.dataIndex] >= 2,
+          anchor: 'center', align: 'center',
+        }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }
+      }
+    },
+    plugins: [ChartDataLabels, xAxisTotalsPlugin],
+  });
+}
+
 // ── Prospects search ────────────────────────────────────────────────────────
 const MONTHS_FR_LONG = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
 function formatDateFr(dateStr) {
@@ -2305,6 +2432,7 @@ function applyStatsFilters() {
   // KPIs : data complète pour semaine/mois courants, filtered pour total/top/moy période
   renderStatsKPIs(statsRawData, filtered, gran);
   renderStatsTimeline(filtered, gran);
+  renderStatsCreationChart(statsRawData, gran);
   renderStatsCloserChart(filtered);
   renderStatsEventChart(filtered);
   // NB: on ne remplit PAS automatiquement statDateTo — il filtre seulement
@@ -2352,7 +2480,7 @@ async function reloadStats() {
   const area = document.getElementById('statsArea');
   if (!area) return;
   document.getElementById('statsKpiRow').innerHTML = '<div class="stats-loading">⏳ Chargement des données…</div>';
-  statsDestroyChart('timeline'); statsDestroyChart('closer'); statsDestroyChart('event');
+  statsDestroyChart('timeline'); statsDestroyChart('creation'); statsDestroyChart('closer'); statsDestroyChart('event');
   try {
     // Toujours charger 12 mois — la période sélectionnée filtre côté client uniquement
     const r = await fetch('/api/stats?months=12');

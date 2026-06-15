@@ -378,7 +378,7 @@ def stats_data():
                 params={
                     "date":   f"gte.{start_date}",
                     "status": "eq.active",
-                    "select": "date,member_name,event_type,start_time",
+                    "select": "date,member_name,event_type,start_time,created_at",
                     "order":  "date.asc",
                 },
                 timeout=15
