@@ -740,6 +740,7 @@ def get_all_bookings_for_import(days_past: int = 90, days_future: int = 30) -> l
                 "status":      "active",
                 "lead_name":   "",
                 "lead_email":  "",
+                "created_at":  e.get("created_at", ""),
             }
             invitees = get_event_invitees(e.get("uri", ""))
             if invitees:

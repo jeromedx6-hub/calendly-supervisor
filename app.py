@@ -468,6 +468,7 @@ def webhook_calendly():
                 "date":         date_str,
                 "status":       "active",
                 "received_at":  datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "created_at":   payload.get("created_at", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
             }
             sb_upsert(booking)
             _recent_bookings.appendleft(booking)  # le plus récent en tête
