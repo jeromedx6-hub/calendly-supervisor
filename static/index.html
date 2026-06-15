@@ -520,7 +520,14 @@
   </div>
   <!-- Rythme de prise de RDV (date de création) -->
   <div class="stats-chart-card" style="margin-top:16px">
-    <h3>Rythme de prise de RDV <span id="statsCreationLabel" style="font-size:13px;font-weight:400;color:#64748b"></span> <span style="font-size:11px;font-weight:400;color:#94a3b8;margin-left:6px">— par date de création</span></h3>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+      <h3 style="margin:0">Rythme de prise de RDV <span style="font-size:11px;font-weight:400;color:#94a3b8">— par date de création</span></h3>
+      <div style="display:flex;gap:0;margin-left:auto;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+        <button id="creationGranDay"   onclick="setCreationGran('day')"   style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#f1f5f9;color:#64748b;cursor:pointer;border-right:1px solid #e2e8f0">Jour</button>
+        <button id="creationGranWeek"  onclick="setCreationGran('week')"  style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#0f172a;color:#fff;cursor:pointer;border-right:1px solid #e2e8f0">Semaine</button>
+        <button id="creationGranMonth" onclick="setCreationGran('month')" style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#f1f5f9;color:#64748b;cursor:pointer">Mois</button>
+      </div>
+    </div>
     <canvas id="chartCreation" height="90"></canvas>
   </div>
   <!-- Par closer + par event -->
@@ -2050,6 +2057,20 @@ function toggleAllEvents() {
 }
 
 // ── Graphique : Rythme de prise de RDV (par date de création) ──────────────
+let _creationGran = 'week'; // granularité indépendante du graphique de création
+
+function setCreationGran(gran) {
+  _creationGran = gran;
+  // Mettre à jour l'apparence des boutons
+  ['day','week','month'].forEach(g => {
+    const btn = document.getElementById('creationGran' + g.charAt(0).toUpperCase() + g.slice(1));
+    if (!btn) return;
+    const active = g === gran;
+    btn.style.background = active ? '#0f172a' : '#f1f5f9';
+    btn.style.color      = active ? '#fff'    : '#64748b';
+  });
+  if (statsRawData) renderStatsCreationChart(statsRawData, gran);
+}
 
 function creationDateOf(b) {
   // Extrait la date Paris (UTC+2) depuis created_at ISO, ou fallback sur date du RDV
@@ -2432,7 +2453,7 @@ function applyStatsFilters() {
   // KPIs : data complète pour semaine/mois courants, filtered pour total/top/moy période
   renderStatsKPIs(statsRawData, filtered, gran);
   renderStatsTimeline(filtered, gran);
-  renderStatsCreationChart(statsRawData, gran);
+  renderStatsCreationChart(statsRawData, _creationGran);
   renderStatsCloserChart(filtered);
   renderStatsEventChart(filtered);
   // NB: on ne remplit PAS automatiquement statDateTo — il filtre seulement
