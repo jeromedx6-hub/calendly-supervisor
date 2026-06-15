@@ -492,26 +492,23 @@ def recent_bookings():
     """
     mem = list(_recent_bookings)  # webhooks reçus depuis le démarrage
 
-    # Fallback / complément Supabase : derniers 50 bookings
+    # Fallback / complément Supabase : 50 dernières PRISES de RDV (par date de réservation)
     sb_bookings = []
     if SUPABASE_URL and SUPABASE_KEY:
         try:
-            cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
             r = req_http.get(
                 f"{SUPABASE_URL}/rest/v1/bookings",
                 headers=_sb_headers(),
                 params={
-                    "date":       f"gte.{cutoff}",
-                    "status":     "eq.active",
-                    "select":     "event_uri,member_name,lead_name,lead_email,event_type,date,start_time,created_at",
-                    "order":      "date.desc,start_time.desc",
-                    "limit":      "50",
+                    "status": "eq.active",
+                    "select": "event_uri,member_name,lead_name,lead_email,event_type,date,start_time,created_at",
+                    "order":  "created_at.desc",
+                    "limit":  "50",
                 },
                 timeout=8
             )
             if r.ok:
                 raw = r.json()
-                # Mapper created_at → received_at pour uniformiser l'affichage frontend
                 for b in raw:
                     if b.get("created_at") and not b.get("received_at"):
                         b["received_at"] = b["created_at"]
