@@ -2444,7 +2444,9 @@ function renderLiveFeedCards(bookings, isNew) {
              ${delay ? `· <span style="color:#f59e0b;font-weight:600">⏱ ${delay}</span>` : ''}
            </div>`
         : '';
-      return `<div class="live-card${isNewCard}">
+      const emailEnc = encodeURIComponent(email);
+      const nameEnc  = encodeURIComponent(lead);
+      return `<div class="live-card${isNewCard}" onclick="openContactHistory('${emailEnc}','${nameEnc}')" style="cursor:pointer" title="Voir l'historique complet">
         <div class="live-card-icon">📅</div>
         <div class="live-card-body">
           <div class="live-card-lead">${lead}</div>
