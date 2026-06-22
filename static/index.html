@@ -454,6 +454,20 @@
   <div id="prospectsInfo" class="prospects-results-info"></div>
   <div id="prospectsResults"></div>
 
+  <!-- ── Modal historique contact ──────────────────────────────────────────── -->
+  <div id="contactHistoryOverlay" onclick="closeContactHistory()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;">
+    <div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;width:min(720px,95vw);max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);display:flex;flex-direction:column;">
+      <div style="padding:20px 24px 16px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px">
+        <div style="flex:1">
+          <div id="contactHistoryName" style="font-size:16px;font-weight:700;color:#0f172a"></div>
+          <div id="contactHistoryEmail" style="font-size:12px;color:#64748b;margin-top:2px"></div>
+        </div>
+        <button onclick="closeContactHistory()" style="border:none;background:#f1f5f9;color:#64748b;border-radius:6px;width:30px;height:30px;font-size:16px;cursor:pointer;line-height:1">✕</button>
+      </div>
+      <div id="contactHistoryBody" style="padding:16px 24px 24px"></div>
+    </div>
+  </div>
+
   <!-- ── Flux temps réel ──────────────────────────────────────────────────── -->
   <div class="live-feed-section" style="margin-top:28px">
     <div class="live-feed-header">
@@ -2250,7 +2264,9 @@ async function searchProspects() {
             const statusBadge = canceled
               ? `<span style="font-size:11px;background:#fee2e2;color:#dc2626;border-radius:4px;padding:2px 7px;font-weight:600">❌ Annulé</span>`
               : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
-            return `<tr style="${canceled ? 'opacity:0.6' : ''}">
+            const emailEnc = encodeURIComponent(b.lead_email || '');
+            const nameEnc  = encodeURIComponent(b.lead_name  || '');
+            return `<tr style="${canceled ? 'opacity:0.65' : ''};cursor:pointer" onclick="openContactHistory('${emailEnc}','${nameEnc}')" title="Voir l'historique complet">
               <td><strong>${b.lead_name || '—'}</strong></td>
               <td style="color:#64748b">${b.lead_email || '—'}</td>
               <td>${statusBadge}</td>
@@ -2264,6 +2280,91 @@ async function searchProspects() {
       </table>`;
   } catch(e) {
     results.innerHTML = `<div class="prospects-empty">⚠ Erreur : ${e.message}</div>`;
+  }
+}
+
+// ── Historique contact ────────────────────────────────────────────────────────
+function closeContactHistory() {
+  const ov = document.getElementById('contactHistoryOverlay');
+  if (ov) { ov.style.display = 'none'; }
+}
+
+async function openContactHistory(emailEnc, nameEnc) {
+  const email = decodeURIComponent(emailEnc);
+  const name  = decodeURIComponent(nameEnc);
+  const ov    = document.getElementById('contactHistoryOverlay');
+  const body  = document.getElementById('contactHistoryBody');
+  document.getElementById('contactHistoryName').textContent  = name || email;
+  document.getElementById('contactHistoryEmail').textContent = email;
+  body.innerHTML = '<div style="text-align:center;padding:24px;color:#64748b">⏳ Chargement…</div>';
+  ov.style.display = 'flex';
+
+  try {
+    const q = email || name;
+    const r = await fetch(`/api/search_leads?q=${encodeURIComponent(q)}`);
+    if (!r.ok) throw new Error(`API ${r.status}`);
+    const data  = await r.json();
+    const list  = (data.results || []).filter(b =>
+      (!email || (b.lead_email || '').toLowerCase() === email.toLowerCase()) ||
+      (!name  || (b.lead_name  || '').toLowerCase() === name.toLowerCase())
+    );
+
+    if (!list.length) {
+      body.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8">Aucun événement trouvé.</div>';
+      return;
+    }
+
+    // Trier par date desc
+    list.sort((a, b) => (b.date + b.start_time) > (a.date + a.start_time) ? 1 : -1);
+
+    const globalOrder = window.lastData?.user_order || [];
+    const colorMap = {};
+    globalOrder.forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+
+    const activeCount   = list.filter(b => b.status !== 'canceled').length;
+    const canceledCount = list.filter(b => b.status === 'canceled').length;
+
+    body.innerHTML = `
+      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 16px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:#16a34a">${activeCount}</div>
+          <div style="font-size:11px;color:#166534">RDV actifs</div>
+        </div>
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 16px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:#dc2626">${canceledCount}</div>
+          <div style="font-size:11px;color:#991b1b">Annulés</div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#f8fafc;text-align:left">
+            <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Date RDV</th>
+            <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Heure</th>
+            <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Statut</th>
+            <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Closer</th>
+            <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${list.map(b => {
+            const canceled   = b.status === 'canceled';
+            const color      = colorMap[b.member_name] || '#64748b';
+            const dispName   = getDisplayName(b.member_name);
+            const statusBadge = canceled
+              ? `<span style="font-size:11px;background:#fee2e2;color:#dc2626;border-radius:4px;padding:2px 7px;font-weight:600">❌ Annulé</span>`
+              : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
+            return `<tr style="${canceled ? 'opacity:0.55' : ''};border-bottom:1px solid #f1f5f9">
+              <td style="padding:9px 10px;font-weight:${canceled?'400':'600'}">${formatDateFr(b.date)}</td>
+              <td style="padding:9px 10px;color:#475569">${b.start_time || '—'}</td>
+              <td style="padding:9px 10px">${statusBadge}</td>
+              <td style="padding:9px 10px"><span style="background:${color};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dispName}</span></td>
+              <td style="padding:9px 10px;color:#64748b;font-size:12px">${b.event_type || '—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  } catch(e) {
+    body.innerHTML = `<div style="color:#dc2626;padding:16px">⚠ Erreur : ${e.message}</div>`;
   }
 }
 

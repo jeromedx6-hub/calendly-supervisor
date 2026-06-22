@@ -711,24 +711,25 @@ def get_all_bookings_for_import(days_past: int = 90, days_future: int = 30) -> l
     uri_to_name = {m["uri"]: m["name"] for m in all_members}
 
     raw_events = []
-    try:
-        events = api_get_all_pages(
-            f"{CALENDLY_BASE}/scheduled_events",
-            {"organization": org_uri, "status": "active",
-             "min_start_time": start_utc, "max_start_time": end_utc}
-        )
-        for e in events:
-            memberships = e.get("event_memberships", [])
-            member_name = ""
-            if memberships:
-                user_uri    = memberships[0].get("user", "")
-                member_name = uri_to_name.get(user_uri, memberships[0].get("user_name", ""))
-            raw_events.append((member_name, e))
-    except Exception as ex:
-        print(f"[import] org query error: {ex}")
+    for fetch_status in ("active", "canceled"):
+        try:
+            events = api_get_all_pages(
+                f"{CALENDLY_BASE}/scheduled_events",
+                {"organization": org_uri, "status": fetch_status,
+                 "min_start_time": start_utc, "max_start_time": end_utc}
+            )
+            for e in events:
+                memberships = e.get("event_memberships", [])
+                member_name = ""
+                if memberships:
+                    user_uri    = memberships[0].get("user", "")
+                    member_name = uri_to_name.get(user_uri, memberships[0].get("user_name", ""))
+                raw_events.append((member_name, e, fetch_status))
+        except Exception as ex:
+            print(f"[import] org query error ({fetch_status}): {ex}")
 
-    def build_booking(member_name_event):
-        member_name, e = member_name_event
+    def build_booking(member_name_event_status):
+        member_name, e, evt_status = member_name_event_status
         try:
             s = parse_dt_paris(e["start_time"])
             booking = {
@@ -737,7 +738,7 @@ def get_all_bookings_for_import(days_past: int = 90, days_future: int = 30) -> l
                 "event_type":  e.get("name", ""),
                 "start_time":  s.strftime("%H:%M"),
                 "date":        s.strftime("%Y-%m-%d"),
-                "status":      "active",
+                "status":      evt_status,
                 "lead_name":   "",
                 "lead_email":  "",
                 "created_at":  e.get("created_at", ""),
