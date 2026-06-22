@@ -331,8 +331,7 @@ def search_leads():
             headers=_sb_headers(),
             params={
                 "or":     f"(lead_name.ilike.*{q}*,lead_email.ilike.*{q}*,member_name.ilike.*{q}*)",
-                "status": "eq.active",
-                "select": "date,start_time,member_name,event_type,lead_name,lead_email,event_uri",
+                "select": "date,start_time,member_name,event_type,lead_name,lead_email,event_uri,status",
                 "order":  "date.desc",
                 "limit":  "200",
             },

@@ -2240,15 +2240,20 @@ async function searchProspects() {
     results.innerHTML = `
       <table class="prospects-table">
         <thead><tr>
-          <th>Prospect</th><th>Email</th><th>Date</th><th>Heure</th><th>Closer</th><th>Event</th>
+          <th>Prospect</th><th>Email</th><th>Statut</th><th>Date</th><th>Heure</th><th>Closer</th><th>Event</th>
         </tr></thead>
         <tbody>
           ${list.map(b => {
-            const color  = colorMap[b.member_name] || '#64748b';
+            const color    = colorMap[b.member_name] || '#64748b';
             const dispName = getDisplayName(b.member_name);
-            return `<tr>
+            const canceled = b.status === 'canceled';
+            const statusBadge = canceled
+              ? `<span style="font-size:11px;background:#fee2e2;color:#dc2626;border-radius:4px;padding:2px 7px;font-weight:600">❌ Annulé</span>`
+              : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
+            return `<tr style="${canceled ? 'opacity:0.6' : ''}">
               <td><strong>${b.lead_name || '—'}</strong></td>
               <td style="color:#64748b">${b.lead_email || '—'}</td>
+              <td>${statusBadge}</td>
               <td>${formatDateFr(b.date)}</td>
               <td>${b.start_time || '—'}</td>
               <td><span class="badge-closer" style="background:${color}">${dispName}</span></td>
