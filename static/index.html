@@ -2338,6 +2338,7 @@ async function openContactHistory(emailEnc, nameEnc) {
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
           <tr style="background:#f8fafc;text-align:left">
+            <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Réservé le</th>
             <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Date RDV</th>
             <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Heure</th>
             <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Statut</th>
@@ -2353,7 +2354,9 @@ async function openContactHistory(emailEnc, nameEnc) {
             const statusBadge = canceled
               ? `<span style="font-size:11px;background:#fee2e2;color:#dc2626;border-radius:4px;padding:2px 7px;font-weight:600">❌ Annulé</span>`
               : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
+            const bookedAt = b.created_at ? formatDatetime(b.created_at) : '—';
             return `<tr style="${canceled ? 'opacity:0.55' : ''};border-bottom:1px solid #f1f5f9">
+              <td style="padding:9px 10px;font-size:11px;color:#64748b">${bookedAt}</td>
               <td style="padding:9px 10px;font-weight:${canceled?'400':'600'}">${formatDateFr(b.date)}</td>
               <td style="padding:9px 10px;color:#475569">${b.start_time || '—'}</td>
               <td style="padding:9px 10px">${statusBadge}</td>
