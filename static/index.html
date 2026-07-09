@@ -2072,7 +2072,7 @@ function setCreationGran(gran) {
     btn.style.background = active ? '#0f172a' : '#f1f5f9';
     btn.style.color      = active ? '#fff'    : '#64748b';
   });
-  if (statsRawData) renderStatsCreationChart(statsRawData, gran);
+  if (statsRawData) renderStatsCreationChart(statsFilterBookings(statsRawData), gran);
 }
 
 function creationDateOf(b) {
@@ -2108,12 +2108,13 @@ function statsFilterByCreation(raw) {
   });
 }
 
-function renderStatsCreationChart(rawAll, gran) {
+function renderStatsCreationChart(filtered, gran) {
   statsDestroyChart('creation');
   const lbl = document.getElementById('statsCreationLabel');
   if (lbl) lbl.textContent = gran === 'day' ? '— par jour' : gran === 'week' ? '— par semaine' : '— par mois';
 
-  const bookings  = statsFilterByCreation(rawAll);
+  // Utilise les données déjà filtrées (closer, event, range) — seul l'axe X change (created_at)
+  const bookings = filtered.filter(b => !!creationDateOf(b));
   const allClosers = [...new Set(bookings.map(b => b.member_name).filter(Boolean))];
   const globalOrder = window.lastData?.user_order || allClosers;
   const closers = globalOrder.filter(c => allClosers.includes(c));
@@ -2553,7 +2554,7 @@ function applyStatsFilters() {
   // KPIs : data complète pour semaine/mois courants, filtered pour total/top/moy période
   renderStatsKPIs(statsRawData, filtered, gran);
   renderStatsTimeline(filtered, gran);
-  renderStatsCreationChart(statsRawData, _creationGran);
+  renderStatsCreationChart(filtered, _creationGran);
   renderStatsCloserChart(filtered);
   renderStatsEventChart(filtered);
   // NB: on ne remplit PAS automatiquement statDateTo — il filtre seulement
