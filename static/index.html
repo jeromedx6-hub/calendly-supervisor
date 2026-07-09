@@ -529,13 +529,13 @@
   <div class="stats-kpi-row" id="statsKpiRow"></div>
   <!-- Evolution temporelle -->
   <div class="stats-chart-card">
-    <h3>Évolution des RDV <span id="statsTimelineLabel"></span></h3>
+    <h3>RDVs planifiés <span id="statsTimelineLabel"></span></h3>
     <canvas id="chartTimeline" height="90"></canvas>
   </div>
   <!-- Rythme de prise de RDV (date de création) -->
   <div class="stats-chart-card" style="margin-top:16px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
-      <h3 style="margin:0">Rythme de prise de RDV <span style="font-size:11px;font-weight:400;color:#94a3b8">— par date de création</span></h3>
+      <h3 style="margin:0">Nouveaux bookings reçus <span style="font-size:11px;font-weight:400;color:#94a3b8" id="statsCreationLabel">— par date de réservation</span></h3>
       <div style="display:flex;gap:0;margin-left:auto;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
         <button id="creationGranDay"   onclick="setCreationGran('day')"   style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#f1f5f9;color:#64748b;cursor:pointer;border-right:1px solid #e2e8f0">Jour</button>
         <button id="creationGranWeek"  onclick="setCreationGran('week')"  style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#0f172a;color:#fff;cursor:pointer;border-right:1px solid #e2e8f0">Semaine</button>
@@ -2111,7 +2111,7 @@ function statsFilterByCreation(raw) {
 function renderStatsCreationChart(filtered, gran) {
   statsDestroyChart('creation');
   const lbl = document.getElementById('statsCreationLabel');
-  if (lbl) lbl.textContent = gran === 'day' ? '— par jour' : gran === 'week' ? '— par semaine' : '— par mois';
+  if (lbl) lbl.textContent = gran === 'day' ? '— par date de réservation · jour' : gran === 'week' ? '— par date de réservation · semaine' : '— par date de réservation · mois';
 
   // Utilise les données déjà filtrées (closer, event, range) — seul l'axe X change (created_at)
   const bookings = filtered.filter(b => !!creationDateOf(b));
