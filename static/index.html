@@ -529,14 +529,24 @@
   <div class="stats-kpi-row" id="statsKpiRow"></div>
   <!-- Evolution temporelle -->
   <div class="stats-chart-card">
-    <h3>RDVs planifiés <span id="statsTimelineLabel"></span></h3>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+      <h3 style="margin:0">RDVs planifiés <span id="statsTimelineLabel"></span></h3>
+      <div style="display:flex;gap:0;margin-left:auto;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+        <button id="timelineViewCloser" onclick="setTimelineView('closer')" style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#0f172a;color:#fff;cursor:pointer;border-right:1px solid #e2e8f0">Par closer</button>
+        <button id="timelineViewEvent"  onclick="setTimelineView('event')"  style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#f1f5f9;color:#64748b;cursor:pointer">Par event</button>
+      </div>
+    </div>
     <canvas id="chartTimeline" height="90"></canvas>
   </div>
-  <!-- Rythme de prise de RDV (date de création) -->
+  <!-- Nouveaux bookings reçus (date de création) -->
   <div class="stats-chart-card" style="margin-top:16px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
       <h3 style="margin:0">Nouveaux bookings reçus <span style="font-size:11px;font-weight:400;color:#94a3b8" id="statsCreationLabel">— par date de réservation</span></h3>
       <div style="display:flex;gap:0;margin-left:auto;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+        <button id="creationViewCloser" onclick="setCreationView('closer')" style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#0f172a;color:#fff;cursor:pointer;border-right:1px solid #e2e8f0">Par closer</button>
+        <button id="creationViewEvent"  onclick="setCreationView('event')"  style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#f1f5f9;color:#64748b;cursor:pointer;border-right:1px solid #e2e8f0">Par event</button>
+      </div>
+      <div style="display:flex;gap:0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
         <button id="creationGranDay"   onclick="setCreationGran('day')"   style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#f1f5f9;color:#64748b;cursor:pointer;border-right:1px solid #e2e8f0">Jour</button>
         <button id="creationGranWeek"  onclick="setCreationGran('week')"  style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#0f172a;color:#fff;cursor:pointer;border-right:1px solid #e2e8f0">Semaine</button>
         <button id="creationGranMonth" onclick="setCreationGran('month')" style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#f1f5f9;color:#64748b;cursor:pointer">Mois</button>
@@ -1824,34 +1834,38 @@ function renderStatsTimeline(bookings, gran) {
   const label = document.getElementById('statsTimelineLabel');
   if (label) label.textContent = gran === 'day' ? '— par jour' : gran === 'week' ? '— par semaine' : '— par mois';
 
-  // Collecter tous les closers (pour légende + couleurs)
-  const allClosers = [...new Set(bookings.map(b => b.member_name).filter(Boolean))];
-  const globalOrder = (window.lastData?.user_order || allClosers);
-  const closers = globalOrder.filter(c => allClosers.includes(c));
-  const colorMap = {};
-  (window.lastData?.user_order || closers).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
-
-  // Construire les périodes (toutes, même à 0) + toujours inclure la période courante
   const todayForPeriod = new Date().toISOString().slice(0, 10);
   const periodSet = new Set(bookings.map(b => statsPeriodKey(b.date, gran)));
-  periodSet.add(statsPeriodKey(todayForPeriod, gran)); // semaine/mois courant toujours visible
-  const periods   = [...periodSet].sort();
+  periodSet.add(statsPeriodKey(todayForPeriod, gran));
+  const periods = [...periodSet].sort();
 
-  // Dataset par closer
-  const datasets = closers.map(closer => {
-    const data = periods.map(p =>
-      bookings.filter(b => b.member_name === closer && statsPeriodKey(b.date, gran) === p).length
-    );
-    const color = colorMap[closer] || '#64748b';
-    return {
-      label:           getDisplayName(closer),
-      data,
-      backgroundColor: color + 'cc',
-      borderColor:     color,
-      borderWidth:     1,
-      borderRadius:    3,
-    };
-  });
+  let datasets;
+  if (_timelineView === 'event') {
+    const allEvents = [...new Set(bookings.map(b => b.event_type).filter(Boolean))].sort();
+    const evColorMap = eventColorMap(allEvents);
+    datasets = allEvents.map(et => {
+      const color = evColorMap[et];
+      return {
+        label: et,
+        data: periods.map(p => bookings.filter(b => b.event_type === et && statsPeriodKey(b.date, gran) === p).length),
+        backgroundColor: color + 'cc', borderColor: color, borderWidth: 1, borderRadius: 3,
+      };
+    });
+  } else {
+    const allClosers = [...new Set(bookings.map(b => b.member_name).filter(Boolean))];
+    const globalOrder = (window.lastData?.user_order || allClosers);
+    const closers = globalOrder.filter(c => allClosers.includes(c));
+    const colorMap = {};
+    (window.lastData?.user_order || closers).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+    datasets = closers.map(closer => {
+      const color = colorMap[closer] || '#64748b';
+      return {
+        label: getDisplayName(closer),
+        data: periods.map(p => bookings.filter(b => b.member_name === closer && statsPeriodKey(b.date, gran) === p).length),
+        backgroundColor: color + 'cc', borderColor: color, borderWidth: 1, borderRadius: 3,
+      };
+    });
+  }
 
   // Dataset total si filtre closer appliqué (1 seul closer → pas stacked)
   const isFiltered = document.getElementById('statCloser')?.value !== 'all';
@@ -2060,17 +2074,50 @@ function toggleAllEvents() {
 }
 
 // ── Graphique : Rythme de prise de RDV (par date de création) ──────────────
-let _creationGran = 'week'; // granularité indépendante du graphique de création
+let _creationGran = 'week';
+let _timelineView = 'closer'; // 'closer' | 'event'
+let _creationView = 'closer';
+
+// Palette de couleurs pour les event types
+const EVENT_COLORS = [
+  '#6366f1','#f59e0b','#10b981','#ef4444','#3b82f6','#ec4899','#14b8a6',
+  '#f97316','#8b5cf6','#84cc16','#06b6d4','#e11d48','#a3e635','#fb923c',
+  '#7c3aed','#0ea5e9','#d946ef','#65a30d','#0891b2','#dc2626',
+];
+function eventColorMap(eventTypes) {
+  const map = {};
+  eventTypes.forEach((et, i) => map[et] = EVENT_COLORS[i % EVENT_COLORS.length]);
+  return map;
+}
+
+function _updateViewButtons(prefix, view) {
+  ['closer','event'].forEach(v => {
+    const btn = document.getElementById(prefix + v.charAt(0).toUpperCase() + v.slice(1));
+    if (!btn) return;
+    btn.style.background = v === view ? '#0f172a' : '#f1f5f9';
+    btn.style.color      = v === view ? '#fff'    : '#64748b';
+  });
+}
+
+function setTimelineView(view) {
+  _timelineView = view;
+  _updateViewButtons('timelineView', view);
+  if (statsRawData) renderStatsTimeline(statsFilterBookings(statsRawData), document.getElementById('statGran')?.value || 'week');
+}
+
+function setCreationView(view) {
+  _creationView = view;
+  _updateViewButtons('creationView', view);
+  if (statsRawData) renderStatsCreationChart(statsFilterBookings(statsRawData), _creationGran);
+}
 
 function setCreationGran(gran) {
   _creationGran = gran;
-  // Mettre à jour l'apparence des boutons
   ['day','week','month'].forEach(g => {
     const btn = document.getElementById('creationGran' + g.charAt(0).toUpperCase() + g.slice(1));
     if (!btn) return;
-    const active = g === gran;
-    btn.style.background = active ? '#0f172a' : '#f1f5f9';
-    btn.style.color      = active ? '#fff'    : '#64748b';
+    btn.style.background = g === gran ? '#0f172a' : '#f1f5f9';
+    btn.style.color      = g === gran ? '#fff'    : '#64748b';
   });
   if (statsRawData) renderStatsCreationChart(statsFilterBookings(statsRawData), gran);
 }
@@ -2113,34 +2160,41 @@ function renderStatsCreationChart(filtered, gran) {
   const lbl = document.getElementById('statsCreationLabel');
   if (lbl) lbl.textContent = gran === 'day' ? '— par date de réservation · jour' : gran === 'week' ? '— par date de réservation · semaine' : '— par date de réservation · mois';
 
-  // Utilise les données déjà filtrées (closer, event, range) — seul l'axe X change (created_at)
   const bookings = filtered.filter(b => !!creationDateOf(b));
-  const allClosers = [...new Set(bookings.map(b => b.member_name).filter(Boolean))];
-  const globalOrder = window.lastData?.user_order || allClosers;
-  const closers = globalOrder.filter(c => allClosers.includes(c));
-  const colorMap = {};
-  (window.lastData?.user_order || closers).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
-
-  // Périodes par date de création
   const todayStr  = new Date().toISOString().slice(0, 10);
   const periodSet = new Set(bookings.map(b => statsPeriodKey(creationDateOf(b), gran)).filter(Boolean));
   periodSet.add(statsPeriodKey(todayStr, gran));
   const periods = [...periodSet].sort();
 
-  // Dataset stacked par closer
-  const datasets = closers.map(closer => {
-    const color = colorMap[closer] || '#64748b';
-    return {
-      label:           getDisplayName(closer),
-      data:            periods.map(p =>
-        bookings.filter(b => b.member_name === closer && statsPeriodKey(creationDateOf(b), gran) === p).length
-      ),
-      backgroundColor: color + 'cc',
-      borderColor:     color,
-      borderWidth:     1,
-      borderRadius:    3,
-    };
-  });
+  let datasets;
+  if (_creationView === 'event') {
+    const allEvents = [...new Set(bookings.map(b => b.event_type).filter(Boolean))].sort();
+    const evColorMap = eventColorMap(allEvents);
+    datasets = allEvents.map(et => {
+      const color = evColorMap[et];
+      return {
+        label: et,
+        data: periods.map(p => bookings.filter(b => b.event_type === et && statsPeriodKey(creationDateOf(b), gran) === p).length),
+        backgroundColor: color + 'cc', borderColor: color, borderWidth: 1, borderRadius: 3,
+      };
+    });
+  } else {
+    const allClosers = [...new Set(bookings.map(b => b.member_name).filter(Boolean))];
+    const globalOrder = window.lastData?.user_order || allClosers;
+    const closers = globalOrder.filter(c => allClosers.includes(c));
+    const colorMap = {};
+    (window.lastData?.user_order || closers).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+    datasets = closers.map(closer => {
+      const color = colorMap[closer] || '#64748b';
+      return {
+        label:           getDisplayName(closer),
+        data:            periods.map(p =>
+          bookings.filter(b => b.member_name === closer && statsPeriodKey(creationDateOf(b), gran) === p).length
+        ),
+        backgroundColor: color + 'cc', borderColor: color, borderWidth: 1, borderRadius: 3,
+      };
+    });
+  }
 
   // Totaux par période pour mini-tableau sous l'axe
   const totals = periods.map(p =>
