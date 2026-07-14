@@ -1149,18 +1149,33 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
       effectiveOrder.forEach(c => counts[c] = 0);
       allWeekEvents.forEach(e => { if (e.closer && counts[e.closer] !== undefined) counts[e.closer]++; });
       const maxCount = Math.max(...Object.values(counts), 1);
-      rankRow.style.display = 'block';
-      rankRow.innerHTML = effectiveOrder.map(c => {
+      // Trier : actifs (>0) d'abord par count desc, puis inactifs
+      const sorted = [...effectiveOrder].sort((a,b) => (counts[b]||0) - (counts[a]||0));
+      rankRow.style.display = 'flex';
+      rankRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;padding:0 0 14px 0;align-items:center';
+      rankRow.innerHTML = sorted.map((c, rank) => {
         const n     = counts[c] || 0;
         const color = colorMap[c] || '#64748b';
-        const pct   = Math.round((n / maxCount) * 100);
         const name  = getDisplayName(c);
-        return `<div style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;margin-right:12px;min-width:64px;max-width:80px;vertical-align:top">
-          <div style="font-size:15px;font-weight:700;color:${n > 0 ? color : '#cbd5e1'}">${n}</div>
-          <div style="width:100%;height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden">
-            <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .3s"></div>
+        const pct   = Math.round((n / maxCount) * 100);
+        const active = n > 0;
+        return `<div style="
+          display:flex;align-items:center;gap:8px;
+          background:${active ? '#fff' : '#f8fafc'};
+          border:1px solid ${active ? '#e2e8f0' : '#f1f5f9'};
+          border-left:3px solid ${active ? color : '#e2e8f0'};
+          border-radius:8px;padding:7px 12px 7px 10px;
+          opacity:${active ? '1' : '0.45'};
+          min-width:140px;flex:0 0 auto;
+          box-shadow:${active ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'};
+        ">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;font-weight:600;color:${active ? '#1e293b' : '#94a3b8'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+            <div style="margin-top:4px;height:3px;background:#f1f5f9;border-radius:2px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${color};border-radius:2px;transition:width .4s ease"></div>
+            </div>
           </div>
-          <div style="font-size:10px;color:#64748b;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px;text-align:center" title="${name}">${name}</div>
+          <div style="font-size:18px;font-weight:700;color:${active ? color : '#cbd5e1'};line-height:1;flex-shrink:0">${n}</div>
         </div>`;
       }).join('');
     }
