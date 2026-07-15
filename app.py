@@ -331,7 +331,7 @@ def search_leads():
             headers=_sb_headers(),
             params={
                 "or":     f"(lead_name.ilike.*{q}*,lead_email.ilike.*{q}*,member_name.ilike.*{q}*)",
-                "select": "date,start_time,member_name,event_type,lead_name,lead_email,event_uri,status,created_at,cancel_url,reschedule_url",
+                "select": "date,start_time,member_name,event_type,lead_name,lead_email,event_uri,status,created_at",
                 "order":  "date.desc",
                 "limit":  "200",
             },
@@ -458,19 +458,20 @@ def webhook_calendly():
                 date_str = time_str = ""
 
             booking = {
-                "event_uri":       scheduled.get("uri", ""),
-                "member_name":     closer_name,
-                "lead_name":       payload.get("name", ""),
-                "lead_email":      payload.get("email", ""),
-                "event_type":      scheduled.get("name", ""),
-                "start_time":      time_str,
-                "date":            date_str,
-                "status":          "active",
-                "received_at":     datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "created_at":      payload.get("created_at", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
-                "cancel_url":      payload.get("cancel_url", ""),
-                "reschedule_url":  payload.get("reschedule_url", ""),
+                "event_uri":    scheduled.get("uri", ""),
+                "member_name":  closer_name,
+                "lead_name":    payload.get("name", ""),
+                "lead_email":   payload.get("email", ""),
+                "event_type":   scheduled.get("name", ""),
+                "start_time":   time_str,
+                "date":         date_str,
+                "status":       "active",
+                "received_at":  datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "created_at":   payload.get("created_at", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
             }
+            # Stocker les URLs d'action Calendly si les colonnes existent en base
+            if payload.get("cancel_url"):    booking["cancel_url"]    = payload["cancel_url"]
+            if payload.get("reschedule_url"): booking["reschedule_url"] = payload["reschedule_url"]
             sb_upsert(booking)
             _recent_bookings.appendleft(booking)  # le plus récent en tête
 
@@ -502,7 +503,7 @@ def recent_bookings():
                 headers=_sb_headers(),
                 params={
                     "status": "eq.active",
-                    "select": "event_uri,member_name,lead_name,lead_email,event_type,date,start_time,created_at,cancel_url,reschedule_url",
+                    "select": "event_uri,member_name,lead_name,lead_email,event_type,date,start_time,created_at",
                     "order":  "created_at.desc",
                     "limit":  "50",
                 },

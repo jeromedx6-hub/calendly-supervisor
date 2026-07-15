@@ -750,10 +750,8 @@ def get_all_bookings_for_import(days_past: int = 90, days_future: int = 30) -> l
             }
             invitees = get_event_invitees(e.get("uri", ""))
             if invitees:
-                booking["lead_name"]     = invitees[0].get("name", "")
-                booking["lead_email"]    = invitees[0].get("email", "")
-                booking["cancel_url"]    = invitees[0].get("cancel_url", "")
-                booking["reschedule_url"] = invitees[0].get("reschedule_url", "")
+                booking["lead_name"]  = invitees[0].get("name", "")
+                booking["lead_email"] = invitees[0].get("email", "")
             return booking
         except Exception as ex:
             print(f"[import] build error: {ex}")
