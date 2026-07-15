@@ -2337,10 +2337,21 @@ async function searchProspects() {
     const colorMap = {};
     globalOrder.forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
 
+    // Charger les URLs Calendly pour les RDV actifs
+    const srActionMap = {};
+    await Promise.all(
+      list.filter(b => b.status !== 'canceled' && b.event_uri).map(async b => {
+        try {
+          const ar = await fetch(`/api/invitee_actions?event_uri=${encodeURIComponent(b.event_uri)}`);
+          if (ar.ok) srActionMap[b.event_uri] = await ar.json();
+        } catch(e) {}
+      })
+    );
+
     results.innerHTML = `
       <table class="prospects-table">
         <thead><tr>
-          <th>Prospect</th><th>Email</th><th>Statut</th><th>Date</th><th>Heure</th><th>Closer</th><th>Event</th><th></th>
+          <th>Prospect</th><th>Email</th><th>Statut</th><th>Date</th><th>Heure</th><th>Closer</th><th>Event</th><th>Actions</th>
         </tr></thead>
         <tbody>
           ${list.map(b => {
@@ -2352,7 +2363,8 @@ async function searchProspects() {
               : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
             const emailEnc = encodeURIComponent(b.lead_email || '');
             const nameEnc  = encodeURIComponent(b.lead_name  || '');
-            const srActions = !canceled ? calendlyActionLinks(b.cancel_url, b.reschedule_url, true, b.event_uri) : calendlyActionLinks('','',true, b.event_uri);
+            const acts     = srActionMap[b.event_uri] || {};
+            const srActions = calendlyActionLinks(acts.cancel_url, acts.reschedule_url, true, b.event_uri);
             return `<tr style="${canceled ? 'opacity:0.65' : ''};cursor:pointer" onclick="openContactHistory('${emailEnc}','${nameEnc}')" title="Voir l'historique complet">
               <td><strong>${b.lead_name || '—'}</strong></td>
               <td style="color:#64748b">${b.lead_email || '—'}</td>
