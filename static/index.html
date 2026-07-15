@@ -2412,6 +2412,38 @@ async function openContactHistory(emailEnc, nameEnc) {
     const activeCount   = list.filter(b => b.status !== 'canceled').length;
     const canceledCount = list.filter(b => b.status === 'canceled').length;
 
+    // Charger les URLs d'action depuis Calendly pour les RDV actifs (en parallèle)
+    const actionMap = {};
+    await Promise.all(
+      list.filter(b => b.status !== 'canceled' && b.event_uri).map(async b => {
+        try {
+          const ar = await fetch(`/api/invitee_actions?event_uri=${encodeURIComponent(b.event_uri)}`);
+          if (ar.ok) actionMap[b.event_uri] = await ar.json();
+        } catch(e) { /* silencieux */ }
+      })
+    );
+
+    function renderModalRow(b) {
+      const canceled    = b.status === 'canceled';
+      const color       = colorMap[b.member_name] || '#64748b';
+      const dispName    = getDisplayName(b.member_name);
+      const statusBadge = canceled
+        ? `<span style="font-size:11px;background:#fee2e2;color:#dc2626;border-radius:4px;padding:2px 7px;font-weight:600">❌ Annulé</span>`
+        : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
+      const bookedAt    = b.created_at ? formatDatetime(b.created_at) : '—';
+      const actions     = actionMap[b.event_uri] || {};
+      const modalActs   = !canceled ? calendlyActionLinks(actions.cancel_url, actions.reschedule_url, true) : '';
+      return `<tr style="${canceled ? 'opacity:0.55' : ''};border-bottom:1px solid #f1f5f9">
+        <td style="padding:9px 10px;font-size:11px;color:#64748b">${bookedAt}</td>
+        <td style="padding:9px 10px;font-weight:${canceled?'400':'600'}">${formatDateFr(b.date)}</td>
+        <td style="padding:9px 10px;color:#475569">${b.start_time || '—'}</td>
+        <td style="padding:9px 10px">${statusBadge}</td>
+        <td style="padding:9px 10px"><span style="background:${color};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dispName}</span></td>
+        <td style="padding:9px 10px;color:#64748b;font-size:12px">${b.event_type || '—'}</td>
+        <td style="padding:9px 10px">${modalActs}</td>
+      </tr>`;
+    }
+
     body.innerHTML = `
       <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
         <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 16px;text-align:center">
@@ -2432,30 +2464,10 @@ async function openContactHistory(emailEnc, nameEnc) {
             <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Statut</th>
             <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Closer</th>
             <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Type</th>
-            <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0"></th>
+            <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Actions</th>
           </tr>
         </thead>
-        <tbody>
-          ${list.map(b => {
-            const canceled   = b.status === 'canceled';
-            const color      = colorMap[b.member_name] || '#64748b';
-            const dispName   = getDisplayName(b.member_name);
-            const statusBadge = canceled
-              ? `<span style="font-size:11px;background:#fee2e2;color:#dc2626;border-radius:4px;padding:2px 7px;font-weight:600">❌ Annulé</span>`
-              : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
-            const bookedAt = b.created_at ? formatDatetime(b.created_at) : '—';
-            const modalActions = !canceled ? calendlyActionLinks(b.cancel_url, b.reschedule_url, true) : '';
-            return `<tr style="${canceled ? 'opacity:0.55' : ''};border-bottom:1px solid #f1f5f9">
-              <td style="padding:9px 10px;font-size:11px;color:#64748b">${bookedAt}</td>
-              <td style="padding:9px 10px;font-weight:${canceled?'400':'600'}">${formatDateFr(b.date)}</td>
-              <td style="padding:9px 10px;color:#475569">${b.start_time || '—'}</td>
-              <td style="padding:9px 10px">${statusBadge}</td>
-              <td style="padding:9px 10px"><span style="background:${color};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dispName}</span></td>
-              <td style="padding:9px 10px;color:#64748b;font-size:12px">${b.event_type || '—'}</td>
-              <td style="padding:9px 10px">${modalActions}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
+        <tbody>${list.map(renderModalRow).join('')}</tbody>
       </table>`;
   } catch(e) {
     body.innerHTML = `<div style="color:#dc2626;padding:16px">⚠ Erreur : ${e.message}</div>`;

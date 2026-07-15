@@ -356,6 +356,22 @@ def invitees():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/invitee_actions")
+def invitee_actions():
+    """Retourne cancel_url + reschedule_url pour un event_uri donné."""
+    try:
+        event_uri = request.args.get("event_uri", "")
+        if not event_uri:
+            return jsonify({"cancel_url": "", "reschedule_url": ""})
+        inv = calendly_api.get_event_invitees(event_uri)
+        first = inv[0] if inv else {}
+        return jsonify({
+            "cancel_url":     first.get("cancel_url", ""),
+            "reschedule_url": first.get("reschedule_url", ""),
+        })
+    except Exception as e:
+        return jsonify({"cancel_url": "", "reschedule_url": "", "error": str(e)})
+
 @app.route("/api/stats")
 def stats_data():
     """Retourne les bookings Supabase pour la page statistiques.
@@ -469,9 +485,9 @@ def webhook_calendly():
                 "received_at":  datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "created_at":   payload.get("created_at", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
             }
-            # Stocker les URLs d'action Calendly si les colonnes existent en base
-            if payload.get("cancel_url"):    booking["cancel_url"]    = payload["cancel_url"]
-            if payload.get("reschedule_url"): booking["reschedule_url"] = payload["reschedule_url"]
+            # URLs d'action en mémoire uniquement (pas en Supabase — colonnes non migrées)
+            booking["_cancel_url"]     = payload.get("cancel_url", "")
+            booking["_reschedule_url"] = payload.get("reschedule_url", "")
             sb_upsert(booking)
             _recent_bookings.appendleft(booking)  # le plus récent en tête
 
@@ -524,7 +540,14 @@ def recent_bookings():
         if b.get("event_uri") not in mem_uris:
             mem.append(b)
 
-    return jsonify({"bookings": mem[:50], "count": len(mem[:50])})
+    # Normaliser les clés _cancel_url / _reschedule_url (depuis webhooks en mémoire)
+    out = []
+    for b in mem[:50]:
+        entry = dict(b)
+        entry["cancel_url"]     = b.get("_cancel_url", "") or b.get("cancel_url", "")
+        entry["reschedule_url"] = b.get("_reschedule_url", "") or b.get("reschedule_url", "")
+        out.append(entry)
+    return jsonify({"bookings": out, "count": len(out)})
 
 @app.route("/api/event_type_names")
 def event_type_names():
