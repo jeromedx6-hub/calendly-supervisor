@@ -222,7 +222,8 @@ threading.Thread(target=_auto_sync_loop, daemon=True).start()
 
 # ── Flux temps réel : dernières prises de RDV reçues par webhook ──────────────
 from collections import deque
-_recent_bookings = deque(maxlen=50)  # 50 derniers RDVs reçus
+_recent_bookings = deque(maxlen=50)   # 50 derniers RDVs reçus
+_invitee_url_cache = {}               # event_uri → {cancel_url, reschedule_url}
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
@@ -363,12 +364,20 @@ def invitee_actions():
         event_uri = request.args.get("event_uri", "")
         if not event_uri:
             return jsonify({"cancel_url": "", "reschedule_url": ""})
+        # 1. Cache webhook (instantané, sans appel API)
+        if event_uri in _invitee_url_cache:
+            return jsonify(_invitee_url_cache[event_uri])
+        # 2. Cache Calendly invitees (TTL 30 min)
         inv = calendly_api.get_event_invitees(event_uri)
         first = inv[0] if inv else {}
-        return jsonify({
+        result = {
             "cancel_url":     first.get("cancel_url", ""),
             "reschedule_url": first.get("reschedule_url", ""),
-        })
+        }
+        # Mettre en cache si on a les URLs
+        if result["cancel_url"] or result["reschedule_url"]:
+            _invitee_url_cache[event_uri] = result
+        return jsonify(result)
     except Exception as e:
         return jsonify({"cancel_url": "", "reschedule_url": "", "error": str(e)})
 
@@ -485,9 +494,14 @@ def webhook_calendly():
                 "received_at":  datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "created_at":   payload.get("created_at", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")),
             }
-            # URLs d'action en mémoire uniquement (pas en Supabase — colonnes non migrées)
-            booking["_cancel_url"]     = payload.get("cancel_url", "")
-            booking["_reschedule_url"] = payload.get("reschedule_url", "")
+            # URLs d'action : stocker en mémoire + cache dédié
+            c_url = payload.get("cancel_url", "")
+            r_url = payload.get("reschedule_url", "")
+            booking["_cancel_url"]     = c_url
+            booking["_reschedule_url"] = r_url
+            event_uri_key = booking.get("event_uri", "")
+            if event_uri_key:
+                _invitee_url_cache[event_uri_key] = {"cancel_url": c_url, "reschedule_url": r_url}
             sb_upsert(booking)
             _recent_bookings.appendleft(booking)  # le plus récent en tête
 
