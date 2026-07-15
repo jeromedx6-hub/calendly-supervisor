@@ -2539,7 +2539,7 @@ function leadTime(receivedIso, rdvDate, rdvTime) {
   return hrs > 0 ? `${days}j ${hrs}h avant le RDV` : `${days}j avant le RDV`;
 }
 
-function renderLiveFeedCards(bookings, isNew) {
+async function renderLiveFeedCards(bookings, isNew) {
   const container = document.getElementById('liveFeedCards');
   if (!container) return;
   if (!bookings || bookings.length === 0) {
@@ -2549,6 +2549,21 @@ function renderLiveFeedCards(bookings, isNew) {
   try {
     const colorMap = {};
     (window.lastData?.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+
+    // Enrichir avec cancel/reschedule URLs depuis Calendly pour les cartes sans URLs
+    const actionMap = {};
+    await Promise.all(bookings.map(async b => {
+      if (b.cancel_url || b.reschedule_url) {
+        actionMap[b.event_uri] = { cancel_url: b.cancel_url, reschedule_url: b.reschedule_url };
+        return;
+      }
+      if (!b.event_uri) return;
+      try {
+        const ar = await fetch(`/api/invitee_actions?event_uri=${encodeURIComponent(b.event_uri)}`);
+        if (ar.ok) actionMap[b.event_uri] = await ar.json();
+      } catch(e) { /* silencieux */ }
+    }));
+
     container.innerHTML = bookings.map((b, idx) => {
       const color        = colorMap[b.member_name] || '#6d28d9';
       const dispName     = getDisplayName(b.member_name);
@@ -2568,7 +2583,8 @@ function renderLiveFeedCards(bookings, isNew) {
         : '';
       const emailEnc = encodeURIComponent(email);
       const nameEnc  = encodeURIComponent(lead);
-      const liveActionLinks = calendlyActionLinks(b.cancel_url, b.reschedule_url, true);
+      const acts = actionMap[b.event_uri] || {};
+      const liveActionLinks = calendlyActionLinks(acts.cancel_url, acts.reschedule_url, true);
       return `<div class="live-card${isNewCard}" onclick="openContactHistory('${emailEnc}','${nameEnc}')" style="cursor:pointer" title="Voir l'historique complet">
         <div class="live-card-icon">📅</div>
         <div class="live-card-body">
