@@ -1484,16 +1484,16 @@ async function openSlotPopup(closerNames, slotLabel, date, data) {
       if (cached) evEnd = cached.end;
     }
 
-    const timeRange  = event?.start ? `${event.start}${evEnd ? '–' + evEnd : ''}` : '';
-    const noEvent    = !event ? '<div class="slot-popup-meta" style="color:#f59e0b">⚠ Détails non disponibles</div>' : '';
-    const leadColor  = leadNames === '—' ? '#94a3b8' : 'inherit';
-    const slotCalUrl = calendlyEventUrl(event?.uri || '');
-    const slotCalLink = slotCalUrl ? `<a href="${slotCalUrl}" target="_blank" title="Ouvrir dans Calendly" style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:11px;color:#6366f1;text-decoration:none;font-weight:600" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">🔗 Voir dans Calendly</a>` : '';
+    const timeRange   = event?.start ? `${event.start}${evEnd ? '–' + evEnd : ''}` : '';
+    const noEvent     = !event ? '<div class="slot-popup-meta" style="color:#f59e0b">⚠ Détails non disponibles</div>' : '';
+    const leadColor   = leadNames === '—' ? '#94a3b8' : 'inherit';
+    const firstInvitee = Array.isArray(invitees) ? invitees[0] : null;
+    const slotActions = calendlyActionLinks(firstInvitee?.cancel_url, firstInvitee?.reschedule_url, false);
     return `<div class="slot-popup-rdv">
       <div class="slot-popup-closer">👤 ${dispName}</div>
       <div class="slot-popup-lead">🎯 Lead : <strong style="color:${leadColor}">${leadNames}</strong></div>
       ${evType ? `<div class="slot-popup-meta">📋 ${evType}${timeRange ? ' · ' + timeRange : ''}</div>` : noEvent}
-      ${slotCalLink}
+      ${slotActions}
     </div>`;
   }).join('');
 }
@@ -2352,8 +2352,7 @@ async function searchProspects() {
               : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
             const emailEnc = encodeURIComponent(b.lead_email || '');
             const nameEnc  = encodeURIComponent(b.lead_name  || '');
-            const srCalUrl  = calendlyEventUrl(b.event_uri);
-            const srCalLink = srCalUrl ? `<a href="${srCalUrl}" target="_blank" onclick="event.stopPropagation()" title="Ouvrir dans Calendly" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;background:#f1f5f9;color:#475569;text-decoration:none;font-size:13px" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">🔗</a>` : '';
+            const srActions = !canceled ? calendlyActionLinks(b.cancel_url, b.reschedule_url, true) : '';
             return `<tr style="${canceled ? 'opacity:0.65' : ''};cursor:pointer" onclick="openContactHistory('${emailEnc}','${nameEnc}')" title="Voir l'historique complet">
               <td><strong>${b.lead_name || '—'}</strong></td>
               <td style="color:#64748b">${b.lead_email || '—'}</td>
@@ -2362,7 +2361,7 @@ async function searchProspects() {
               <td>${b.start_time || '—'}</td>
               <td><span class="badge-closer" style="background:${color}">${dispName}</span></td>
               <td style="color:#475569;font-size:12px">${b.event_type || '—'}</td>
-              <td>${srCalLink}</td>
+              <td>${srActions}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -2445,8 +2444,7 @@ async function openContactHistory(emailEnc, nameEnc) {
               ? `<span style="font-size:11px;background:#fee2e2;color:#dc2626;border-radius:4px;padding:2px 7px;font-weight:600">❌ Annulé</span>`
               : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
             const bookedAt = b.created_at ? formatDatetime(b.created_at) : '—';
-            const calUrl   = calendlyEventUrl(b.event_uri);
-            const calLink  = calUrl ? `<a href="${calUrl}" target="_blank" onclick="event.stopPropagation()" title="Ouvrir dans Calendly" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;background:#f1f5f9;color:#475569;text-decoration:none;font-size:13px;transition:background 0.15s" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">🔗</a>` : '';
+            const modalActions = !canceled ? calendlyActionLinks(b.cancel_url, b.reschedule_url, true) : '';
             return `<tr style="${canceled ? 'opacity:0.55' : ''};border-bottom:1px solid #f1f5f9">
               <td style="padding:9px 10px;font-size:11px;color:#64748b">${bookedAt}</td>
               <td style="padding:9px 10px;font-weight:${canceled?'400':'600'}">${formatDateFr(b.date)}</td>
@@ -2454,7 +2452,7 @@ async function openContactHistory(emailEnc, nameEnc) {
               <td style="padding:9px 10px">${statusBadge}</td>
               <td style="padding:9px 10px"><span style="background:${color};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dispName}</span></td>
               <td style="padding:9px 10px;color:#64748b;font-size:12px">${b.event_type || '—'}</td>
-              <td style="padding:9px 10px">${calLink}</td>
+              <td style="padding:9px 10px">${modalActions}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -2478,10 +2476,20 @@ function timeAgo(isoStr) {
   return `il y a ${Math.floor(diff/86400)}j`;
 }
 
-function calendlyEventUrl(eventUri) {
-  if (!eventUri) return null;
-  const uuid = eventUri.split('/').pop();
-  return `https://calendly.com/app/scheduled_events/${uuid}`;
+function calendlyActionLinks(cancelUrl, rescheduleUrl, compact) {
+  const links = [];
+  if (rescheduleUrl) links.push(
+    compact
+      ? `<a href="${rescheduleUrl}" target="_blank" onclick="event.stopPropagation()" title="Replanifier dans Calendly" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:#6366f1;text-decoration:none;background:#eef2ff;border-radius:5px;padding:3px 7px;white-space:nowrap" onmouseover="this.style.background='#e0e7ff'" onmouseout="this.style.background='#eef2ff'">🔄 Replanifier</a>`
+      : `<a href="${rescheduleUrl}" target="_blank" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:#6366f1;text-decoration:none;border:1px solid #c7d2fe;border-radius:6px;padding:4px 10px;background:#eef2ff" onmouseover="this.style.background='#e0e7ff'" onmouseout="this.style.background='#eef2ff'">🔄 Replanifier</a>`
+  );
+  if (cancelUrl) links.push(
+    compact
+      ? `<a href="${cancelUrl}" target="_blank" onclick="event.stopPropagation()" title="Annuler dans Calendly" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:#dc2626;text-decoration:none;background:#fef2f2;border-radius:5px;padding:3px 7px;white-space:nowrap" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fef2f2'">❌ Annuler</a>`
+      : `<a href="${cancelUrl}" target="_blank" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:#dc2626;text-decoration:none;border:1px solid #fca5a5;border-radius:6px;padding:4px 10px;background:#fef2f2" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fef2f2'">❌ Annuler</a>`
+  );
+  if (!links.length) return '';
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;${compact ? 'margin-top:5px' : 'margin-top:8px'}">${links.join('')}</div>`;
 }
 
 function formatDatetime(isoStr) {
@@ -2548,8 +2556,7 @@ function renderLiveFeedCards(bookings, isNew) {
         : '';
       const emailEnc = encodeURIComponent(email);
       const nameEnc  = encodeURIComponent(lead);
-      const liveCalUrl  = calendlyEventUrl(b.event_uri);
-      const liveCalLink = liveCalUrl ? `<a href="${liveCalUrl}" target="_blank" onclick="event.stopPropagation()" title="Ouvrir dans Calendly" style="display:inline-block;margin-top:6px;font-size:11px;font-weight:600;color:#6366f1;text-decoration:none;background:#eef2ff;border-radius:5px;padding:3px 8px;white-space:nowrap" onmouseover="this.style.background='#e0e7ff'" onmouseout="this.style.background='#eef2ff'">🔗 Calendly</a>` : '';
+      const liveActionLinks = calendlyActionLinks(b.cancel_url, b.reschedule_url, true);
       return `<div class="live-card${isNewCard}" onclick="openContactHistory('${emailEnc}','${nameEnc}')" style="cursor:pointer" title="Voir l'historique complet">
         <div class="live-card-icon">📅</div>
         <div class="live-card-body">
@@ -2557,11 +2564,11 @@ function renderLiveFeedCards(bookings, isNew) {
           ${email ? `<div class="live-card-email">✉ ${email}</div>` : ''}
           <div class="live-card-rdv">📌 ${b.event_type || '—'} · ${rdvDate}</div>
           ${receivedLine}
+          ${liveActionLinks}
         </div>
         <div class="live-card-meta" style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
           <div class="live-card-closer" style="color:${color}">${dispName}</div>
           <div class="live-card-time">${receivedAgo}</div>
-          ${liveCalLink}
         </div>
       </div>`;
     }).join('');

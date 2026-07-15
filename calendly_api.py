@@ -488,7 +488,12 @@ def get_event_invitees(event_uri: str) -> list:
     try:
         data = api_get(f"{CALENDLY_BASE}/scheduled_events/{uuid}/invitees", {"count": 10})
         invitees = [
-            {"name": inv.get("name", ""), "email": inv.get("email", "")}
+            {
+                "name":            inv.get("name", ""),
+                "email":           inv.get("email", ""),
+                "cancel_url":      inv.get("cancel_url", ""),
+                "reschedule_url":  inv.get("reschedule_url", ""),
+            }
             for inv in data.get("collection", [])
         ]
     except Exception:
@@ -745,8 +750,10 @@ def get_all_bookings_for_import(days_past: int = 90, days_future: int = 30) -> l
             }
             invitees = get_event_invitees(e.get("uri", ""))
             if invitees:
-                booking["lead_name"]  = invitees[0].get("name", "")
-                booking["lead_email"] = invitees[0].get("email", "")
+                booking["lead_name"]     = invitees[0].get("name", "")
+                booking["lead_email"]    = invitees[0].get("email", "")
+                booking["cancel_url"]    = invitees[0].get("cancel_url", "")
+                booking["reschedule_url"] = invitees[0].get("reschedule_url", "")
             return booking
         except Exception as ex:
             print(f"[import] build error: {ex}")
