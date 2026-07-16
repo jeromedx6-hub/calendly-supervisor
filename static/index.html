@@ -2290,12 +2290,22 @@ function renderStatsCreationChart(filtered, gran) {
     options: {
       responsive: true,
       layout: { padding: { bottom: 26 } },
-      onClick(e, elements) {
-        if (!elements.length) return;
-        const idx       = elements[0].index;
-        const periodKey = periods[idx];
-        const periodLbl = statsPeriodLabel(periodKey, gran);
-        openDrillDown(periodKey, periodLbl);
+      onClick(e, elements, chart) {
+        let idx = elements.length ? elements[0].index : null;
+        // Si aucun élément cliqué (clic sur les totaux en bas ou zone vide)
+        // → trouver le tick le plus proche en X
+        if (idx === null && e.native) {
+          const x     = chart.scales.x;
+          const clickX = e.native.offsetX;
+          let best = -1, bestDist = Infinity;
+          x.ticks.forEach((_, i) => {
+            const dist = Math.abs(x.getPixelForTick(i) - clickX);
+            if (dist < bestDist && dist < 30) { bestDist = dist; best = i; }
+          });
+          idx = best >= 0 ? best : null;
+        }
+        if (idx === null) return;
+        openDrillDown(periods[idx], statsPeriodLabel(periods[idx], gran));
       },
       plugins: {
         legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
