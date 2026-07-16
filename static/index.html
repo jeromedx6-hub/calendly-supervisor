@@ -469,6 +469,20 @@
     </div>
   </div>
 
+  <!-- ── Drill-down graphique bookings ──────────────────────────────────── -->
+  <div id="drillDownOverlay" onclick="closeDrillDown()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;">
+    <div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;width:min(820px,96vw);max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);display:flex;flex-direction:column;">
+      <div style="padding:18px 24px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;position:sticky;top:0;background:#fff;z-index:1">
+        <div style="flex:1">
+          <div id="drillDownTitle" style="font-size:15px;font-weight:700;color:#0f172a"></div>
+          <div id="drillDownSub" style="font-size:12px;color:#64748b;margin-top:2px"></div>
+        </div>
+        <button onclick="closeDrillDown()" style="border:none;background:#f1f5f9;color:#64748b;border-radius:6px;width:30px;height:30px;font-size:16px;cursor:pointer;line-height:1">✕</button>
+      </div>
+      <div id="drillDownBody" style="padding:16px 24px 24px"></div>
+    </div>
+  </div>
+
   <!-- ── Flux temps réel ──────────────────────────────────────────────────── -->
   <div class="live-feed-section" style="margin-top:28px">
     <div class="live-feed-header">
@@ -2264,6 +2278,10 @@ function renderStatsCreationChart(filtered, gran) {
     }
   };
 
+  // Stocker les données pour le drill-down
+  _drillDownBookings = bookings;
+  _drillDownGran     = gran;
+
   const ctx = document.getElementById('chartCreation');
   if (!ctx) return;
   statsCharts['creation'] = new Chart(ctx, {
@@ -2272,6 +2290,13 @@ function renderStatsCreationChart(filtered, gran) {
     options: {
       responsive: true,
       layout: { padding: { bottom: 26 } },
+      onClick(e, elements) {
+        if (!elements.length) return;
+        const idx       = elements[0].index;
+        const periodKey = periods[idx];
+        const periodLbl = statsPeriodLabel(periodKey, gran);
+        openDrillDown(periodKey, periodLbl);
+      },
       plugins: {
         legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12 } },
         tooltip: { callbacks: { footer: (items) => { const t = items.reduce((s,i)=>s+i.raw,0); return items.length>1?`Total : ${t}`:''; } } },
@@ -2290,6 +2315,92 @@ function renderStatsCreationChart(filtered, gran) {
     },
     plugins: [ChartDataLabels, xAxisTotalsPlugin],
   });
+  ctx.style.cursor = 'pointer';
+}
+
+// ── Drill-down graphique bookings ───────────────────────────────────────────
+let _drillDownBookings = [];  // référence aux bookings filtrés du graphique création
+let _drillDownGran     = 'day';
+
+function closeDrillDown() {
+  document.getElementById('drillDownOverlay').style.display = 'none';
+}
+
+async function openDrillDown(periodKey, periodLabel) {
+  const ov   = document.getElementById('drillDownOverlay');
+  const body = document.getElementById('drillDownBody');
+  document.getElementById('drillDownTitle').textContent = `📅 ${periodLabel}`;
+
+  const dayBookings = _drillDownBookings.filter(b => statsPeriodKey(creationDateOf(b), _drillDownGran) === periodKey);
+  document.getElementById('drillDownSub').textContent = `${dayBookings.length} booking${dayBookings.length > 1 ? 's' : ''} reçu${dayBookings.length > 1 ? 's' : ''} ce jour`;
+
+  body.innerHTML = '<div style="text-align:center;padding:24px;color:#64748b">⏳ Chargement…</div>';
+  ov.style.display = 'flex';
+
+  // Charger les URLs Calendly en parallèle
+  const actionMap = {};
+  await Promise.all(
+    dayBookings.filter(b => b.status !== 'canceled' && b.event_uri).map(async b => {
+      try {
+        const ar = await fetch(`/api/invitee_actions?event_uri=${encodeURIComponent(b.event_uri)}`);
+        if (ar.ok) actionMap[b.event_uri] = await ar.json();
+      } catch(e) {}
+    })
+  );
+
+  const globalOrder = window.lastData?.user_order || [];
+  const colorMap = {};
+  globalOrder.forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+
+  if (!dayBookings.length) {
+    body.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8">Aucun booking ce jour.</div>';
+    return;
+  }
+
+  // Trier par heure de réservation
+  const sorted = [...dayBookings].sort((a,b) => (creationDateOf(a)||'') > (creationDateOf(b)||'') ? 1 : -1);
+
+  body.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:#f8fafc;text-align:left">
+          <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Réservé à</th>
+          <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Lead</th>
+          <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Date RDV</th>
+          <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Closer</th>
+          <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Type</th>
+          <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Statut</th>
+          <th style="padding:8px 10px;color:#475569;font-weight:600;border-bottom:2px solid #e2e8f0">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(b => {
+          const canceled    = b.status === 'canceled';
+          const color       = colorMap[b.member_name] || '#64748b';
+          const dispName    = getDisplayName(b.member_name);
+          const bookedTime  = b.created_at ? formatDatetime(b.created_at).split(' à ')[1] || '—' : '—';
+          const emailEnc    = encodeURIComponent(b.lead_email || '');
+          const nameEnc     = encodeURIComponent(b.lead_name || '');
+          const statusBadge = canceled
+            ? `<span style="font-size:11px;background:#fee2e2;color:#dc2626;border-radius:4px;padding:2px 7px;font-weight:600">❌ Annulé</span>`
+            : `<span style="font-size:11px;background:#dcfce7;color:#16a34a;border-radius:4px;padding:2px 7px;font-weight:600">✅ Actif</span>`;
+          const acts   = actionMap[b.event_uri] || {};
+          const actBtns = calendlyActionLinks(acts.cancel_url, acts.reschedule_url, true, b.event_uri);
+          return `<tr style="${canceled ? 'opacity:0.6' : ''};border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="closeDrillDown();openContactHistory('${emailEnc}','${nameEnc}')" title="Voir l'historique complet">
+            <td style="padding:9px 10px;color:#64748b;font-size:11px">${bookedTime}</td>
+            <td style="padding:9px 10px">
+              <div style="font-weight:600;color:#0f172a">${b.lead_name || '—'}</div>
+              ${b.lead_email ? `<div style="font-size:11px;color:#94a3b8">${b.lead_email}</div>` : ''}
+            </td>
+            <td style="padding:9px 10px;font-size:12px">${formatDateFr(b.date)} ${b.start_time ? '· ' + b.start_time : ''}</td>
+            <td style="padding:9px 10px"><span style="background:${color};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dispName}</span></td>
+            <td style="padding:9px 10px;color:#64748b;font-size:12px">${b.event_type || '—'}</td>
+            <td style="padding:9px 10px">${statusBadge}</td>
+            <td style="padding:9px 10px" onclick="event.stopPropagation()">${actBtns}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
 }
 
 // ── Prospects search ────────────────────────────────────────────────────────
