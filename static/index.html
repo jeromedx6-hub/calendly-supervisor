@@ -2275,6 +2275,21 @@ function renderStatsCreationChart(filtered, gran) {
         c.fillText(totals[i] ?? '', x.getPixelForTick(i), y);
       });
       c.restore();
+    },
+    afterEvent(chart, args) {
+      if (args.event.type !== 'click') return;
+      const { x } = chart.scales;
+      const ex = args.event.x;
+      const ey = args.event.y;
+      if (ey < x.bottom + 2 || ey > x.bottom + 44) return;
+      let best = -1, bestDist = Infinity;
+      x.ticks.forEach((_, i) => {
+        const dist = Math.abs(x.getPixelForTick(i) - ex);
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      });
+      if (best >= 0) {
+        openDrillDown(periods[best], statsPeriodLabel(periods[best], gran));
+      }
     }
   };
 
@@ -2315,29 +2330,6 @@ function renderStatsCreationChart(filtered, gran) {
   });
   ctx.style.cursor = 'pointer';
 
-  // Listener natif pour les clics sur les totaux dessinés hors de la zone de plot
-  ctx._drillListener && ctx.removeEventListener('click', ctx._drillListener);
-  ctx._drillListener = function(e) {
-    const chart = statsCharts['creation'];
-    if (!chart) return;
-    const x      = chart.scales.x;
-    const rect   = ctx.getBoundingClientRect();
-    const scaleX = ctx.width  / rect.width;
-    const scaleY = ctx.height / rect.height;
-    const clickX = (e.clientX - rect.left) * scaleX;
-    const clickY = (e.clientY - rect.top)  * scaleY;
-    // Zone des totaux : entre x.bottom et x.bottom+40 (pixels canvas)
-    if (clickY < x.bottom || clickY > x.bottom + 45) return;
-    let best = -1, bestDist = Infinity;
-    x.ticks.forEach((_, i) => {
-      const dist = Math.abs(x.getPixelForTick(i) - clickX);
-      if (dist < bestDist) { bestDist = dist; best = i; }
-    });
-    if (best >= 0 && bestDist < (x.width / x.ticks.length)) {
-      openDrillDown(periods[best], statsPeriodLabel(periods[best], gran));
-    }
-  };
-  ctx.addEventListener('click', ctx._drillListener);
 }
 
 // ── Drill-down graphique bookings ───────────────────────────────────────────
