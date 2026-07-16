@@ -567,7 +567,10 @@
         <button id="creationGranMonth" onclick="setCreationGran('month')" style="padding:4px 12px;font-size:11px;font-weight:600;border:none;background:#f1f5f9;color:#64748b;cursor:pointer">Mois</button>
       </div>
     </div>
-    <canvas id="chartCreation" height="90"></canvas>
+    <div style="position:relative">
+      <canvas id="chartCreation" height="90"></canvas>
+      <div id="chartCreationTotalsRow" style="position:absolute;display:none;cursor:pointer;font-size:10px;font-weight:700;color:#3b82f6;pointer-events:auto"></div>
+    </div>
   </div>
 </div>
 
@@ -2262,34 +2265,35 @@ function renderStatsCreationChart(filtered, gran) {
     afterDraw(chart) {
       const { ctx: c, scales: { x } } = chart;
       c.save();
-      c.textBaseline = 'top';
-      c.font = '700 9.5px system-ui, -apple-system, sans-serif';
       c.strokeStyle = '#e2e8f0'; c.lineWidth = 1;
       c.beginPath(); c.moveTo(x.left, x.bottom + 4); c.lineTo(x.right, x.bottom + 4); c.stroke();
-      const y = x.bottom + 8;
-      c.textAlign = 'right'; c.fillStyle = '#3b82f6';
-      c.fillText('RDV', x.left - 8, y);
-      c.textAlign = 'center';
-      x.ticks.forEach((_, i) => {
-        c.fillStyle = '#3b82f6';
-        c.fillText(totals[i] ?? '', x.getPixelForTick(i), y);
-      });
+      c.textBaseline = 'top'; c.textAlign = 'right';
+      c.font = '700 9.5px system-ui, -apple-system, sans-serif';
+      c.fillStyle = '#3b82f6';
+      c.fillText('RDV', x.left - 6, x.bottom + 8);
       c.restore();
     },
-    afterEvent(chart, args) {
-      if (args.event.type !== 'click') return;
+    afterRender(chart) {
       const { x } = chart.scales;
-      const ex = args.event.x;
-      const ey = args.event.y;
-      if (ey < x.bottom + 2 || ey > x.bottom + 44) return;
-      let best = -1, bestDist = Infinity;
-      x.ticks.forEach((_, i) => {
-        const dist = Math.abs(x.getPixelForTick(i) - ex);
-        if (dist < bestDist) { bestDist = dist; best = i; }
+      const row = document.getElementById('chartCreationTotalsRow');
+      if (!row) return;
+      row.style.display = 'flex';
+      row.style.left   = x.left + 'px';
+      row.style.top    = (x.bottom + 6) + 'px';
+      row.style.width  = (x.right - x.left) + 'px';
+      row.style.height = '22px';
+      row.style.alignItems = 'center';
+      row.innerHTML = '';
+      periods.forEach((p, i) => {
+        const span = document.createElement('span');
+        span.style.cssText = 'flex:1;text-align:center;padding:2px 0;border-radius:3px';
+        span.textContent = totals[i] ?? '';
+        span.title = `Voir les ${totals[i]} booking${totals[i]>1?'s':''} du ${statsPeriodLabel(p, gran)}`;
+        span.onmouseenter = () => { span.style.background='#eff6ff'; };
+        span.onmouseleave = () => { span.style.background=''; };
+        span.addEventListener('click', () => openDrillDown(p, statsPeriodLabel(p, gran)));
+        row.appendChild(span);
       });
-      if (best >= 0) {
-        openDrillDown(periods[best], statsPeriodLabel(periods[best], gran));
-      }
     }
   };
 
