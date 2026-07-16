@@ -2291,20 +2291,8 @@ function renderStatsCreationChart(filtered, gran) {
       responsive: true,
       layout: { padding: { bottom: 26 } },
       onClick(e, elements, chart) {
-        let idx = elements.length ? elements[0].index : null;
-        // Si aucun élément cliqué (clic sur les totaux en bas ou zone vide)
-        // → trouver le tick le plus proche en X
-        if (idx === null && e.native) {
-          const x     = chart.scales.x;
-          const clickX = e.native.offsetX;
-          let best = -1, bestDist = Infinity;
-          x.ticks.forEach((_, i) => {
-            const dist = Math.abs(x.getPixelForTick(i) - clickX);
-            if (dist < bestDist && dist < 30) { bestDist = dist; best = i; }
-          });
-          idx = best >= 0 ? best : null;
-        }
-        if (idx === null) return;
+        if (!elements.length) return;
+        const idx = elements[0].index;
         openDrillDown(periods[idx], statsPeriodLabel(periods[idx], gran));
       },
       plugins: {
@@ -2326,6 +2314,30 @@ function renderStatsCreationChart(filtered, gran) {
     plugins: [ChartDataLabels, xAxisTotalsPlugin],
   });
   ctx.style.cursor = 'pointer';
+
+  // Listener natif pour les clics sur les totaux dessinés hors de la zone de plot
+  ctx._drillListener && ctx.removeEventListener('click', ctx._drillListener);
+  ctx._drillListener = function(e) {
+    const chart = statsCharts['creation'];
+    if (!chart) return;
+    const x      = chart.scales.x;
+    const rect   = ctx.getBoundingClientRect();
+    const scaleX = ctx.width  / rect.width;
+    const scaleY = ctx.height / rect.height;
+    const clickX = (e.clientX - rect.left) * scaleX;
+    const clickY = (e.clientY - rect.top)  * scaleY;
+    // Zone des totaux : entre x.bottom et x.bottom+40 (pixels canvas)
+    if (clickY < x.bottom || clickY > x.bottom + 45) return;
+    let best = -1, bestDist = Infinity;
+    x.ticks.forEach((_, i) => {
+      const dist = Math.abs(x.getPixelForTick(i) - clickX);
+      if (dist < bestDist) { bestDist = dist; best = i; }
+    });
+    if (best >= 0 && bestDist < (x.width / x.ticks.length)) {
+      openDrillDown(periods[best], statsPeriodLabel(periods[best], gran));
+    }
+  };
+  ctx.addEventListener('click', ctx._drillListener);
 }
 
 // ── Drill-down graphique bookings ───────────────────────────────────────────
