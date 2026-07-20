@@ -679,6 +679,22 @@ def refresh():
     calendly_api.cache_clear()
     return jsonify({"ok": True})
 
+@app.route("/api/closer_availability")
+def closer_availability():
+    """Disponibilité hebdomadaire des closers : schedule Calendly + busy times agenda externe."""
+    try:
+        start_str = request.args.get("start_date", "")
+        if start_str:
+            start_day = datetime.strptime(start_str, "%Y-%m-%d")
+        else:
+            today = datetime.utcnow() + timedelta(hours=2)
+            start_day = today - timedelta(days=today.weekday())
+        start_day = start_day.replace(hour=0, minute=0, second=0, microsecond=0)
+        data = calendly_api.build_availability_week(start_day)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/health")
 def health():
     key = os.environ.get("CALENDLY_API_KEY", "")

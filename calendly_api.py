@@ -266,6 +266,86 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
     cache_set(cache_key, result)
     return result
 
+# ── Disponibilité des closers (4 états) ───────────────────────────────────────
+def build_availability_week(start_day: datetime) -> dict:
+    """
+    Retourne la disponibilité de chaque closer pour la semaine commençant start_day.
+    4 états par slot de 30 min :
+      - "unavailable" : en dehors des heures paramétrées Calendly
+      - "available"   : libre dans la plage, pas de blocage
+      - "blocked"     : bloqué par l'agenda externe (Google Calendar, etc.)
+      - "booked"      : RDV Calendly posé
+    """
+    ckey = f"avail_{start_day.strftime('%Y-%m-%d')}"
+    cached = cache_get(ckey)
+    if cached:
+        return cached
+
+    end_day   = start_day + timedelta(days=6)
+    start_utc = (start_day - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT00:00:00.000000Z")
+    end_utc   = (end_day   - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT23:59:59.000000Z")
+    week_days = [start_day + timedelta(days=i) for i in range(7)]
+
+    members    = get_members()
+    user_order = [m["name"] for m in members]
+    users_data = {}
+
+    for member in members:
+        user_uri = member["uri"]
+        name     = member["name"]
+        try:
+            sched = get_schedule(user_uri)
+            busy  = get_busy(user_uri, start_utc, end_utc)
+            wh    = sched["working_hours"]
+            do    = sched["date_overrides"]
+        except Exception as ex:
+            print(f"[Availability] skip {name}: {ex}")
+            users_data[name] = {"days": [{"slots": ["unavailable"] * len(SLOT_TIMES)} for _ in week_days]}
+            continue
+
+        days = []
+        for day_paris in week_days:
+            day_str    = day_paris.strftime("%Y-%m-%d")
+            wday_idx   = day_paris.weekday()
+            intervals  = do.get(day_str, wh.get(wday_idx, []))
+            slots      = []
+            for (sh, sm) in SLOT_TIMES:
+                eh = sh + (sm + 30) // 60
+                em = (sm + 30) % 60
+                slot_s = time_to_min(sh, sm)
+                slot_e = time_to_min(eh, em)
+                in_working = any(
+                    slot_s >= time_to_min(fh, fm) and slot_e <= time_to_min(th, tm)
+                    for fh, fm, th, tm in intervals
+                )
+                if not in_working:
+                    slots.append("unavailable")
+                    continue
+                sdt = day_paris.replace(hour=sh, minute=sm)
+                edt = day_paris.replace(hour=eh, minute=em)
+                if any(bt == "calendly" and sdt <= bs < edt for bs, be, bt in busy):
+                    slots.append("booked")
+                elif any(bt == "external" and overlaps(sdt, edt, bs, be) for bs, be, bt in busy):
+                    slots.append("blocked")
+                else:
+                    slots.append("available")
+            days.append({"date": day_str, "slots": slots})
+        users_data[name] = {"days": days}
+
+    slot_labels = [f"{h:02d}:{m:02d}" for h, m in SLOT_TIMES]
+    day_labels  = [d.strftime("%Y-%m-%d") for d in week_days]
+    result = {
+        "start_date":  start_day.strftime("%Y-%m-%d"),
+        "end_date":    end_day.strftime("%Y-%m-%d"),
+        "week_label":  f"Semaine du {start_day.day} au {end_day.day} {FR_MONTHS[end_day.month-1]} {end_day.year}",
+        "slot_labels": slot_labels,
+        "day_dates":   day_labels,
+        "user_order":  user_order,
+        "users":       users_data,
+    }
+    cache_set(ckey, result, ttl=600)
+    return result
+
 # ── Calcul d'une semaine calendaire ───────────────────────────────────────────
 BASE_MONDAY = datetime(2026, 5, 11)
 
