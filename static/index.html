@@ -3047,10 +3047,12 @@ function selectAvailCloser(name) {
   gridEl.style.display = 'block';
   container.appendChild(gridEl);
 
-  // Mode 24h si _availData est chargé, sinon rendu standard 8h-21h
+  // Mode 24h : on passe [] comme effectiveOrder pour que renderGeneralGCal
+  // ne dessine QUE la structure (grille + axe horaire), sans event blocks.
+  // addAvailBackgrounds s'occupe de tout le contenu visuel (vert/rouge/orange).
   const renderData   = _availData ? { ...data, slot_labels: _availData.slot_labels } : data;
   const renderStartH = _availData ? 0 : GCAL_START_H;
-  renderGeneralGCal(renderData, gridEl, [name], weekDays, dayLabels, todayIdx, renderStartH);
+  renderGeneralGCal(renderData, gridEl, [], weekDays, dayLabels, todayIdx, renderStartH);
 
   // Overlay disponibilité si déjà chargée
   if (_availData) addAvailBackgrounds(name);
