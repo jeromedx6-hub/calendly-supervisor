@@ -123,11 +123,15 @@ def get_schedule(user_uri):
                 date_overrides[rule.get("date", "")] = parsed
 
     result = {"working_hours": working_hours, "date_overrides": date_overrides}
-    cache_set(ckey, result)
+    cache_set(ckey, result, ttl=86400)  # schedules changent rarement — cache 24h
     return result
 
 # ── Busy times ────────────────────────────────────────────────────────────────
 def get_busy(user_uri, start_utc, end_utc):
+    ckey = f"busy_{user_uri}_{start_utc[:10]}"
+    cached = cache_get(ckey)
+    if cached is not None:
+        return cached
     data = api_get(f"{CALENDLY_BASE}/user_busy_times", {
         "user": user_uri,
         "start_time": start_utc,
@@ -141,6 +145,7 @@ def get_busy(user_uri, start_utc, end_utc):
             result.append((bs, be, bt.get("type", "external")))
         except Exception:
             pass
+    cache_set(ckey, result, ttl=900)  # busy times : cache 15 min
     return result
 
 # ── Statut d'activité (cache 24h) ─────────────────────────────────────────────
@@ -266,15 +271,49 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
     cache_set(cache_key, result)
     return result
 
-# ── Disponibilité des closers (4 états) ───────────────────────────────────────
+# ── Events org-level pour la semaine (pour disponibilité + invités) ────────────
+def _get_org_events_week(start_utc: str, end_utc: str) -> dict:
+    """Fetch all active org events for the week, grouped by user URI. Cache 5 min."""
+    ckey = f"org_events_{start_utc[:10]}"
+    cached = cache_get(ckey)
+    if cached is not None:
+        return cached
+    org_uri = get_org_info()["org_uri"]
+    raw = api_get_all_pages(
+        f"{CALENDLY_BASE}/scheduled_events",
+        {"organization": org_uri, "status": "active",
+         "min_start_time": start_utc, "max_start_time": end_utc}
+    )
+    by_user = {}
+    for e in raw:
+        memberships = e.get("event_memberships", [])
+        if not memberships:
+            continue
+        user_uri = memberships[0].get("user", "")
+        s = parse_dt_paris(e["start_time"])
+        f = parse_dt_paris(e["end_time"])
+        by_user.setdefault(user_uri, []).append({
+            "name":     e.get("name", "RDV"),
+            "start":    s.strftime("%H:%M"),
+            "end":      f.strftime("%H:%M"),
+            "date":     s.strftime("%Y-%m-%d"),
+            "duration": int((f - s).total_seconds() / 60),
+            "uri":      e.get("uri", ""),
+        })
+    cache_set(ckey, by_user, ttl=300)
+    return by_user
+
+
+# ── Disponibilité des closers (5 états) ───────────────────────────────────────
 def build_availability_week(start_day: datetime) -> dict:
     """
     Retourne la disponibilité de chaque closer pour la semaine commençant start_day.
-    4 états par slot de 30 min :
-      - "unavailable" : en dehors des heures paramétrées Calendly
-      - "available"   : libre dans la plage, pas de blocage
-      - "blocked"     : bloqué par l'agenda externe (Google Calendar, etc.)
-      - "booked"      : RDV Calendly posé
+    États par slot de 30 min :
+      - "unavailable"  : en dehors des heures paramétrées Calendly  → gris foncé
+      - "available"    : libre, pas de blocage
+      - "blocked"      : bloqué par l'agenda externe (Google Cal)    → rouge
+      - "buffer"       : indispo Calendly avant/après un RDV         → orange clair
+      - {type:"booked"}: RDV Calendly avec détails invité            → vert
     """
     ckey = f"avail_{start_day.strftime('%Y-%m-%d')}"
     cached = cache_get(ckey)
@@ -290,7 +329,13 @@ def build_availability_week(start_day: datetime) -> dict:
     user_order = [m["name"] for m in members]
     users_data = {}
 
-    for member in members:
+    # Une seule requête org-level pour tous les events de la semaine
+    try:
+        all_events_by_user = _get_org_events_week(start_utc, end_utc)
+    except Exception:
+        all_events_by_user = {}
+
+    def _fetch_member(member):
         user_uri = member["uri"]
         name     = member["name"]
         try:
@@ -300,14 +345,24 @@ def build_availability_week(start_day: datetime) -> dict:
             do    = sched["date_overrides"]
         except Exception as ex:
             print(f"[Availability] skip {name}: {ex}")
-            users_data[name] = {"days": [{"slots": ["unavailable"] * len(SLOT_TIMES)} for _ in week_days]}
-            continue
+            return name, {"days": [{"slots": ["unavailable"] * len(SLOT_TIMES)} for _ in week_days]}
+
+        # Events de ce closer + invités (parallèle, cache 30 min)
+        raw_events = all_events_by_user.get(user_uri, [])
+        def _add_invitee(ev):
+            invs = get_event_invitees(ev["uri"]) if ev.get("uri") else []
+            return {**ev, "invitee": invs[0]["name"] if invs else None}
+        events = []
+        if raw_events:
+            with ThreadPoolExecutor(max_workers=min(len(raw_events), 6)) as pool:
+                events = list(pool.map(_add_invitee, raw_events))
 
         days = []
         for day_paris in week_days:
             day_str    = day_paris.strftime("%Y-%m-%d")
             wday_idx   = day_paris.weekday()
             intervals  = do.get(day_str, wh.get(wday_idx, []))
+            day_events = [e for e in events if e["date"] == day_str]
             slots      = []
             for (sh, sm) in SLOT_TIMES:
                 eh = sh + (sm + 30) // 60
@@ -323,14 +378,41 @@ def build_availability_week(start_day: datetime) -> dict:
                     continue
                 sdt = day_paris.replace(hour=sh, minute=sm)
                 edt = day_paris.replace(hour=eh, minute=em)
-                if any(bt == "calendly" and sdt <= bs < edt for bs, be, bt in busy):
-                    slots.append("booked")
+
+                # Cherche un RDV Calendly qui chevauche ce slot
+                matched = None
+                for ev in day_events:
+                    ev_s = time_to_min(int(ev["start"][:2]), int(ev["start"][3:]))
+                    ev_e = time_to_min(int(ev["end"][:2]),   int(ev["end"][3:]))
+                    if ev_s < slot_e and ev_e > slot_s:
+                        matched = ev
+                        if ev_s == slot_s:
+                            break
+
+                if matched:
+                    is_start = (time_to_min(int(matched["start"][:2]), int(matched["start"][3:])) == slot_s)
+                    slots.append({
+                        "type":       "booked",
+                        "event_name": matched["name"],
+                        "invitee":    matched.get("invitee"),
+                        "start":      matched["start"],
+                        "end":        matched["end"],
+                        "duration":   matched["duration"],
+                        "is_start":   is_start,
+                    })
+                elif any(bt == "calendly" and overlaps(sdt, edt, bs, be) for bs, be, bt in busy):
+                    # Calendly busy sans RDV détecté = buffer avant/après call
+                    slots.append("buffer")
                 elif any(bt == "external" and overlaps(sdt, edt, bs, be) for bs, be, bt in busy):
                     slots.append("blocked")
                 else:
                     slots.append("available")
             days.append({"date": day_str, "slots": slots})
-        users_data[name] = {"days": days}
+        return name, {"days": days}
+
+    with ThreadPoolExecutor(max_workers=len(members)) as ex:
+        for name, data in ex.map(_fetch_member, members):
+            users_data[name] = data
 
     slot_labels = [f"{h:02d}:{m:02d}" for h, m in SLOT_TIMES]
     day_labels  = [d.strftime("%Y-%m-%d") for d in week_days]
@@ -343,7 +425,7 @@ def build_availability_week(start_day: datetime) -> dict:
         "user_order":  user_order,
         "users":       users_data,
     }
-    cache_set(ckey, result, ttl=600)
+    cache_set(ckey, result, ttl=300)  # 5 min — les RDV peuvent changer
     return result
 
 # ── Calcul d'une semaine calendaire ───────────────────────────────────────────
