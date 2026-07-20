@@ -958,3 +958,138 @@ def get_all_bookings_for_import(days_past: int = 90, days_future: int = 30) -> l
         results = list(executor.map(build_booking, raw_events))
 
     return [b for b in results if b is not None]
+
+
+# ── Disponibilité v2 : bookings depuis Supabase + schedule/busy Calendly ───────
+def build_availability_week_v2(start_day: datetime, bookings_by_member: dict) -> dict:
+    """
+    Calcule la disponibilité en utilisant les bookings pré-fetchés depuis Supabase.
+    Appels Calendly restants : get_schedule (cache 24h) + get_busy (cache 2 min).
+    États par slot 30 min :
+      - "unavailable"  : hors plage Calendly              → gris foncé
+      - "blocked"      : bloqué agenda externe (Google)   → rouge
+      - "buffer"       : indispo Calendly avant/après RDV → orange
+      - {type:"booked"}: RDV posé (détails depuis Supabase) → vert
+      - "available"    : libre
+    """
+    ckey = f"avail2_{start_day.strftime('%Y-%m-%d')}"
+    cached = cache_get(ckey)
+    if cached:
+        return cached
+
+    end_day   = start_day + timedelta(days=6)
+    start_utc = (start_day - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT00:00:00.000000Z")
+    end_utc   = (end_day   - timedelta(hours=PARIS_OFFSET)).strftime("%Y-%m-%dT23:59:59.000000Z")
+    week_days = [start_day + timedelta(days=i) for i in range(7)]
+
+    members    = get_members()
+    user_order = [m["name"] for m in members]
+    users_data = {}
+
+    def _fetch_member(member):
+        user_uri = member["uri"]
+        name     = member["name"]
+        try:
+            sched = get_schedule(user_uri)
+            busy  = get_busy(user_uri, start_utc, end_utc)
+            wh    = sched["working_hours"]
+            do    = sched["date_overrides"]
+        except Exception as ex:
+            print(f"[Avail v2] skip {name}: {ex}")
+            return name, {"days": [{"date": d.strftime("%Y-%m-%d"), "slots": ["unavailable"] * len(AVAIL_SLOT_TIMES)} for d in week_days], "dispo_count": 0}
+
+        # Bookings Supabase → map par jour (durée par défaut 60 min si end_time absent)
+        day_events_map: dict = {}
+        for b in bookings_by_member.get(name, []):
+            d  = b.get("date", "")
+            sh, sm = (int(x) for x in b.get("start_time", "00:00").split(":"))
+            total_end = sh * 60 + sm + 60
+            eh, em    = total_end // 60, total_end % 60
+            day_events_map.setdefault(d, []).append({
+                "event_name": b.get("event_type", "RDV"),
+                "invitee":    b.get("lead_name") or None,
+                "start":      b["start_time"],
+                "end":        f"{eh:02d}:{em:02d}",
+                "duration":   60,
+            })
+
+        days        = []
+        dispo_count = 0
+
+        for day_paris in week_days:
+            day_str    = day_paris.strftime("%Y-%m-%d")
+            wday_idx   = day_paris.weekday()
+            intervals  = do.get(day_str, wh.get(wday_idx, []))
+            ev_today   = day_events_map.get(day_str, [])
+            slots      = []
+
+            for (sh, sm) in AVAIL_SLOT_TIMES:
+                eh     = sh + (sm + 30) // 60
+                em     = (sm + 30) % 60
+                slot_s = time_to_min(sh, sm)
+                slot_e = time_to_min(eh, em)
+                in_working = any(
+                    slot_s >= time_to_min(fh, fm) and slot_e <= time_to_min(th, tm)
+                    for fh, fm, th, tm in intervals
+                )
+                if not in_working:
+                    slots.append("unavailable")
+                    continue
+                sdt = day_paris.replace(hour=sh, minute=sm)
+                edt = day_paris.replace(hour=eh, minute=em)
+
+                # 1. Booking Supabase → "booked" (avec détails invité)
+                matched = None
+                for ev in ev_today:
+                    ev_s = time_to_min(int(ev["start"][:2]), int(ev["start"][3:]))
+                    ev_e = time_to_min(int(ev["end"][:2]),   int(ev["end"][3:]))
+                    if ev_s < slot_e and ev_e > slot_s:
+                        matched = ev
+                        if ev_s == slot_s:
+                            break
+
+                if matched:
+                    is_start = (time_to_min(int(matched["start"][:2]), int(matched["start"][3:])) == slot_s)
+                    slots.append({"type": "booked", "event_name": matched["event_name"],
+                                  "invitee": matched["invitee"], "start": matched["start"],
+                                  "end": matched["end"], "duration": matched["duration"],
+                                  "is_start": is_start})
+                # 2. Busy Calendly sans booking Supabase → buffer (indispo avant/après)
+                elif any(bt == "calendly" and overlaps(sdt, edt, bs, be) for bs, be, bt in busy):
+                    slots.append("buffer")
+                # 3. Agenda externe → bloqué
+                elif any(bt == "external" and overlaps(sdt, edt, bs, be) for bs, be, bt in busy):
+                    slots.append("blocked")
+                else:
+                    slots.append("available")
+
+            # dispo_count : fenêtres de 60 min (2 slots) consécutifs "available" (non chevauchantes)
+            i = 0
+            while i <= len(slots) - 2:
+                if slots[i] == "available" and slots[i + 1] == "available":
+                    dispo_count += 1
+                    i += 2
+                else:
+                    i += 1
+
+            days.append({"date": day_str, "slots": slots})
+
+        return name, {"days": days, "dispo_count": dispo_count}
+
+    with ThreadPoolExecutor(max_workers=len(members)) as ex:
+        for name, data in ex.map(_fetch_member, members):
+            users_data[name] = data
+
+    slot_labels = [f"{h:02d}:{m:02d}" for h, m in AVAIL_SLOT_TIMES]
+    day_labels  = [d.strftime("%Y-%m-%d") for d in week_days]
+    result = {
+        "start_date":  start_day.strftime("%Y-%m-%d"),
+        "end_date":    end_day.strftime("%Y-%m-%d"),
+        "week_label":  f"Semaine du {start_day.day} au {end_day.day} {FR_MONTHS[end_day.month-1]} {end_day.year}",
+        "slot_labels": slot_labels,
+        "day_dates":   day_labels,
+        "user_order":  user_order,
+        "users":       users_data,
+    }
+    cache_set(ckey, result, ttl=120)  # 2 min — aligné avec get_busy TTL
+    return result

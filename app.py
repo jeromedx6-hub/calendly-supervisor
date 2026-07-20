@@ -679,18 +679,53 @@ def refresh():
     calendly_api.cache_clear()
     return jsonify({"ok": True})
 
-@app.route("/api/closer_availability")
-def closer_availability():
-    """Disponibilité hebdomadaire des closers : schedule Calendly + busy times agenda externe."""
+def sb_get_week_bookings(start_str: str, end_str: str) -> dict:
+    """Lit les bookings actifs de la semaine depuis Supabase. Retourne {member_name: [booking...]}."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return {}
+    try:
+        r = req_http.get(
+            f"{SUPABASE_URL}/rest/v1/bookings",
+            headers=_sb_headers(),
+            params={
+                "date":   f"gte.{start_str}",
+                "status": "eq.active",
+                "select": "date,start_time,event_type,member_name,lead_name",
+                "limit":  "1000",
+                "order":  "date.asc,start_time.asc",
+            },
+            timeout=8,
+        )
+        rows = [b for b in (r.json() if r.ok else []) if b.get("date", "") <= end_str]
+        by_member: dict = {}
+        for b in rows:
+            by_member.setdefault(b.get("member_name", ""), []).append(b)
+        return by_member
+    except Exception as e:
+        print(f"[sb_week_bookings] {e}")
+        return {}
+
+
+@app.route("/api/availability_week")
+@app.route("/api/closer_availability")  # rétrocompatibilité
+def availability_week():
+    """Disponibilité hebdomadaire : bookings depuis Supabase + schedule/busy Calendly."""
     try:
         start_str = request.args.get("start_date", "")
         if start_str:
             start_day = datetime.strptime(start_str, "%Y-%m-%d")
         else:
-            today = datetime.utcnow() + timedelta(hours=2)
+            today = datetime.utcnow() + timedelta(hours=PARIS_OFFSET)
             start_day = today - timedelta(days=today.weekday())
         start_day = start_day.replace(hour=0, minute=0, second=0, microsecond=0)
-        data = calendly_api.build_availability_week(start_day)
+        end_day   = start_day + timedelta(days=6)
+
+        # Bookings depuis Supabase (1 requête HTTP rapide, pas d'API Calendly)
+        bookings_by_member = sb_get_week_bookings(
+            start_day.strftime("%Y-%m-%d"),
+            end_day.strftime("%Y-%m-%d"),
+        )
+        data = calendly_api.build_availability_week_v2(start_day, bookings_by_member)
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
