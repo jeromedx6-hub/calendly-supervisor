@@ -8,7 +8,8 @@ import time
 CALENDLY_BASE = "https://api.calendly.com"
 PARIS_OFFSET = 2
 WDAY_MAP = {"monday":0,"tuesday":1,"wednesday":2,"thursday":3,"friday":4,"saturday":5,"sunday":6}
-SLOT_TIMES = [(h, m) for h in range(8, 21) for m in (0, 30)]
+SLOT_TIMES       = [(h, m) for h in range(8, 21) for m in (0, 30)]
+AVAIL_SLOT_TIMES = [(h, m) for h in range(0, 24) for m in (0, 30)]
 FR_MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 
 def get_key():
@@ -345,7 +346,7 @@ def build_availability_week(start_day: datetime) -> dict:
             do    = sched["date_overrides"]
         except Exception as ex:
             print(f"[Availability] skip {name}: {ex}")
-            return name, {"days": [{"slots": ["unavailable"] * len(SLOT_TIMES)} for _ in week_days]}
+            return name, {"days": [{"slots": ["unavailable"] * len(AVAIL_SLOT_TIMES)} for _ in week_days]}
 
         # Events de ce closer + invités (parallèle, cache 30 min)
         raw_events = all_events_by_user.get(user_uri, [])
@@ -364,7 +365,7 @@ def build_availability_week(start_day: datetime) -> dict:
             intervals  = do.get(day_str, wh.get(wday_idx, []))
             day_events = [e for e in events if e["date"] == day_str]
             slots      = []
-            for (sh, sm) in SLOT_TIMES:
+            for (sh, sm) in AVAIL_SLOT_TIMES:
                 eh = sh + (sm + 30) // 60
                 em = (sm + 30) % 60
                 slot_s = time_to_min(sh, sm)
@@ -414,7 +415,7 @@ def build_availability_week(start_day: datetime) -> dict:
         for name, data in ex.map(_fetch_member, members):
             users_data[name] = data
 
-    slot_labels = [f"{h:02d}:{m:02d}" for h, m in SLOT_TIMES]
+    slot_labels = [f"{h:02d}:{m:02d}" for h, m in AVAIL_SLOT_TIMES]
     day_labels  = [d.strftime("%Y-%m-%d") for d in week_days]
     result = {
         "start_date":  start_day.strftime("%Y-%m-%d"),

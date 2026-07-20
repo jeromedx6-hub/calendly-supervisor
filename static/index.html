@@ -967,12 +967,13 @@ function assignGCalColumns(events) {
 }
 
 // ── Rendu GCal (général ET closer individuel) ──────────────────────────────
-function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels, todayIdx) {
+function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels, todayIdx, startH) {
+  if (startH === undefined) startH = GCAL_START_H;
   const evByMember = eventsCache?.events_by_member || {};
   const slotLabels = data.slot_labels || [];
   const N          = slotLabels.length;
   const TOTAL_H    = N * GCAL_SLOT_H;
-  const START_MIN  = GCAL_START_H * 60;
+  const START_MIN  = startH * 60;
 
   // Couleurs stables par closer (position dans user_order global)
   const colorMap = {};
@@ -3042,8 +3043,11 @@ function selectAvailCloser(name) {
   gridEl.style.display = 'block';
   container.appendChild(gridEl);
 
-  // Rendu identique à la vue individuelle du calendrier
-  renderGeneralGCal(data, gridEl, [name], weekDays, dayLabels, todayIdx);
+  // Rendu en mode 24h : on substitue les slot_labels de la dispo (48 slots 00:00-23:30)
+  const renderData = _availData
+    ? { ...data, slot_labels: _availData.slot_labels }
+    : data;
+  renderGeneralGCal(renderData, gridEl, [name], weekDays, dayLabels, todayIdx, 0);
 
   // Overlay disponibilité si déjà chargée
   if (_availData) addAvailBackgrounds(name);
