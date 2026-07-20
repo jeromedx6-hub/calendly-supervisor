@@ -509,25 +509,22 @@
 </div>
 
 <!-- ── Page Disponibilité ─────────────────────────────────────────────── -->
-<div id="availabilityArea" style="display:none;padding:16px 20px;max-width:1400px;margin:0 auto">
-
-  <!-- Barre de navigation semaine -->
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-    <button onclick="availWeekNav(-1)" style="width:36px;height:36px;border-radius:50%;border:1px solid #e2e8f0;background:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center">‹</button>
-    <span id="availWeekLabel" style="font-weight:700;font-size:15px;color:#0f172a;min-width:240px;text-align:center">—</span>
-    <button onclick="availWeekNav(+1)" style="width:36px;height:36px;border-radius:50%;border:1px solid #e2e8f0;background:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center">›</button>
-    <button onclick="loadAvailability()" style="margin-left:8px;padding:6px 14px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;font-size:12px;color:#475569;font-weight:600">↻ Actualiser</button>
-    <!-- Légende -->
-    <div style="margin-left:auto;display:flex;gap:14px;align-items:center;font-size:11px;color:#64748b">
-      <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#bbf7d0;display:inline-block"></span>Disponible</span>
-      <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#fed7aa;display:inline-block"></span>Bloqué (agenda)</span>
-      <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#fca5a5;display:inline-block"></span>RDV posé</span>
-      <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#f1f5f9;border:1px solid #e2e8f0;display:inline-block"></span>Hors plage</span>
+<div id="availabilityArea" style="display:none">
+  <!-- Chips closers -->
+  <div id="availChipsRow" style="padding:12px 20px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    <span style="color:#94a3b8;font-size:12px">Chargement…</span>
+  </div>
+  <!-- Légende + nav semaine -->
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 20px 6px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap">
+    <span id="availWeekLabel" style="font-weight:600;font-size:13px;color:#475569">—</span>
+    <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:#64748b;margin-left:auto">
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:rgba(251,146,60,0.35);border-radius:2px;display:inline-block"></span>Bloqué (agenda)</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:2px;display:inline-block"></span>Hors plage</span>
     </div>
   </div>
-
-  <div id="availContent">
-    <div style="text-align:center;padding:60px;color:#94a3b8">⏳ Chargement…</div>
+  <!-- Zone calendrier -->
+  <div id="availCalContainer" style="padding:0 20px">
+    <div style="text-align:center;padding:60px;color:#94a3b8">← Sélectionne un closer</div>
   </div>
 </div>
 
@@ -2947,197 +2944,134 @@ setInterval(hardRefresh, 60 * 60 * 1000);
 init();
 
 // ── Disponibilité des closers ────────────────────────────────────────────────
-let _availMonday = null;   // Date lundi courant (YYYY-MM-DD)
-let _availData   = null;   // Données chargées
-
-const AVAIL_CLOSER_COLORS = [
-  '#f97316','#14b8a6','#eab308','#22c55e','#3b82f6','#ec4899','#a855f7','#ef4444','#06b6d4','#84cc16'
-];
-
-function _availMondayOf(dateStr) {
-  const d = new Date(dateStr + 'T12:00:00');
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return d.toISOString().slice(0, 10);
-}
-
-function availWeekNav(delta) {
-  const base = _availMonday || _availMondayOf(new Date().toISOString().slice(0, 10));
-  const d = new Date(base + 'T12:00:00');
-  d.setDate(d.getDate() + delta * 7);
-  _availMonday = d.toISOString().slice(0, 10);
-  loadAvailability();
-}
+let _selectedAvailCloser = null;
+let _availData           = null;
 
 async function loadAvailability() {
-  if (!_availMonday) _availMonday = _availMondayOf(new Date().toISOString().slice(0, 10));
-  const content = document.getElementById('availContent');
-  content.innerHTML = '<div style="text-align:center;padding:60px;color:#94a3b8">⏳ Chargement des disponibilités…</div>';
-  try {
-    const r = await fetch(`/api/closer_availability?start_date=${_availMonday}`);
-    if (!r.ok) throw new Error(await r.text());
-    _availData = await r.json();
-    document.getElementById('availWeekLabel').textContent = _availData.week_label || '';
-    renderAvailability(_availData);
-  } catch(e) {
-    content.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444">Erreur : ${e.message}</div>`;
+  // Utilise la même semaine que le calendrier principal
+  const calData = window.lastData;
+  if (!calData) {
+    // Déclenche le chargement du calendrier d'abord
+    await loadWeek(weekOffset);
+    if (!window.lastData) return;
+  }
+  const data = window.lastData;
+  document.getElementById('availWeekLabel').textContent = data.week_label || '';
+
+  // Chips closers
+  renderAvailChips(data);
+
+  // Fetch availability data en arrière-plan
+  const startDate = data.week_days?.[0] || '';
+  if (startDate) {
+    try {
+      const r = await fetch(`/api/closer_availability?start_date=${startDate}`);
+      if (r.ok) {
+        _availData = await r.json();
+        // Si un closer est déjà sélectionné, ajouter les backgrounds
+        if (_selectedAvailCloser) addAvailBackgrounds(_selectedAvailCloser);
+      }
+    } catch(e) {}
+  }
+
+  // Auto-sélectionne le premier closer si aucun sélectionné
+  if (!_selectedAvailCloser && data.user_order?.length) {
+    selectAvailCloser(data.user_order[0]);
+  } else if (_selectedAvailCloser) {
+    selectAvailCloser(_selectedAvailCloser);
   }
 }
 
-function renderAvailability(data) {
-  const { user_order, users, slot_labels, day_dates } = data;
-  const DAY_FR = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-  const HOURS = [];
-  for (let h = 8; h <= 20; h++) HOURS.push(h);
-
-  // Slot labels sont de la forme HH:MM, on a 26 slots (8h00→20h00, 30min chacun)
-  // slot_labels[0]="08:00", slot_labels[1]="08:30", ..., slot_labels[25]="20:00" (mais dernier est souvent exclu)
-  // On garde uniquement les slots HH:00 pour les labels de lignes
-
-  const slotCount = slot_labels.length;
-
-  let html = `<div style="overflow-x:auto">
-    <table style="border-collapse:collapse;font-size:11px;min-width:700px;width:100%">
-      <thead>
-        <tr>
-          <th style="width:120px;padding:6px 10px;text-align:left;color:#64748b;font-weight:600;border-bottom:2px solid #e2e8f0;background:#f8fafc;position:sticky;left:0;z-index:2">Closer</th>`;
-
-  day_dates.forEach((d, i) => {
-    const dt = new Date(d + 'T12:00:00');
-    const dayLabel = `${DAY_FR[i]}<br><span style="font-size:13px;font-weight:700;color:#0f172a">${dt.getDate()}/${dt.getMonth()+1}</span>`;
-    html += `<th style="text-align:center;padding:6px 4px;color:#64748b;font-weight:600;border-bottom:2px solid #e2e8f0;border-left:1px solid #e2e8f0;background:#f8fafc;min-width:80px">${dayLabel}</th>`;
+function renderAvailChips(data) {
+  const colorMap = {};
+  (data.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+  const evByMember = eventsCache?.events_by_member || {};
+  const counts = {};
+  (data.user_order || []).forEach(c => {
+    counts[c] = (data.week_days || []).reduce((sum, d) =>
+      sum + (evByMember[c]?.filter(e => e.date === d).length || 0), 0);
   });
-
-  html += `</tr></thead><tbody>`;
-
-  user_order.forEach((name, ui) => {
-    const color = AVAIL_CLOSER_COLORS[ui % AVAIL_CLOSER_COLORS.length];
-    const udata = users[name];
-    if (!udata) return;
-
-    html += `<tr style="border-bottom:1px solid #e2e8f0">
-      <td style="padding:8px 10px;font-weight:600;font-size:11px;color:${color};vertical-align:top;white-space:nowrap;background:#fff;position:sticky;left:0;border-right:1px solid #e2e8f0">
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></span>${name}
+  const sorted = [...(data.user_order || [])].sort((a,b) => (counts[b]||0) - (counts[a]||0));
+  const maxCount = Math.max(...Object.values(counts), 1);
+  document.getElementById('availChipsRow').innerHTML = sorted.map(c => {
+    const n      = counts[c] || 0;
+    const color  = colorMap[c] || '#64748b';
+    const name   = getDisplayName(c);
+    const active = n > 0;
+    const sel    = c === _selectedAvailCloser;
+    const pct    = Math.round((n / maxCount) * 100);
+    return `<div onclick="selectAvailCloser('${c}')" style="
+      display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+      background:${sel ? '#f0f9ff' : (active ? '#fff' : '#f8fafc')};
+      border:1px solid ${sel ? color : (active ? '#e2e8f0' : '#f1f5f9')};
+      border-left:3px solid ${active ? color : '#e2e8f0'};
+      border-radius:8px;padding:7px 12px 7px 10px;
+      opacity:${active ? '1' : '0.45'};min-width:140px;flex:0 0 auto;
+      box-shadow:${sel ? `0 0 0 2px ${color}33` : (active ? '0 1px 3px rgba(0,0,0,0.06)' : 'none')}
+    ">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:600;color:${active ? '#1e293b' : '#94a3b8'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+        <div style="margin-top:4px;height:3px;background:#f1f5f9;border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:2px;transition:width .4s"></div>
         </div>
-      </td>`;
-
-    udata.days.forEach((dayData, di) => {
-      const slots = dayData.slots;
-      // Résumé: compter les slots disponibles/bloqués/réservés
-      const availCount   = slots.filter(s => s === 'available').length;
-      const blockedCount = slots.filter(s => s === 'blocked').length;
-      const bookedCount  = slots.filter(s => s === 'booked').length;
-      const hasSchedule  = slots.some(s => s !== 'unavailable');
-
-      // Mini barre visuelle (slotCount slots = 12h, chaque slot = 1 pixel de haut dans une barre)
-      const barH = 56;  // hauteur totale de la barre en px
-      const slotPx = barH / slotCount;
-
-      let barSvg = `<svg width="40" height="${barH}" style="border-radius:3px;overflow:hidden;display:block;margin:0 auto">`;
-      slots.forEach((st, si) => {
-        const y = si * slotPx;
-        const h = slotPx + 0.5; // petit overlap pour éviter les gaps
-        const fill = st === 'available'   ? '#86efac'
-                   : st === 'blocked'     ? '#fdba74'
-                   : st === 'booked'      ? '#fca5a5'
-                   : '#f1f5f9';           // unavailable
-        barSvg += `<rect x="0" y="${y.toFixed(1)}" width="40" height="${h.toFixed(1)}" fill="${fill}"/>`;
-      });
-      barSvg += '</svg>';
-
-      // Heures de début et fin de plage
-      let schedStart = '', schedEnd = '';
-      const firstAvail = slots.findIndex(s => s !== 'unavailable');
-      const lastAvail  = slots.length - 1 - [...slots].reverse().findIndex(s => s !== 'unavailable');
-      if (firstAvail >= 0) {
-        schedStart = slot_labels[firstAvail];
-        schedEnd   = slot_labels[Math.min(lastAvail + 1, slot_labels.length - 1)];
-      }
-
-      html += `<td style="padding:6px 4px;text-align:center;vertical-align:top;border-left:1px solid #f1f5f9">`;
-      if (!hasSchedule) {
-        html += `<div style="color:#cbd5e1;font-size:10px;padding:4px 0">—</div>`;
-      } else {
-        html += `<div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-          ${barSvg}
-          <div style="font-size:9px;color:#64748b;line-height:1.2">${schedStart}–${schedEnd}</div>
-          <div style="font-size:9px;display:flex;gap:3px;flex-wrap:wrap;justify-content:center">`;
-        if (availCount)   html += `<span style="color:#16a34a">${availCount * 0.5}h</span>`;
-        if (blockedCount) html += `<span style="color:#ea580c">⛔${(blockedCount * 0.5).toFixed(1).replace('.0','')}h</span>`;
-        if (bookedCount)  html += `<span style="color:#dc2626">📅${(bookedCount * 0.5).toFixed(1).replace('.0','')}h</span>`;
-        html += `</div></div>`;
-      }
-      html += `</td>`;
-    });
-
-    html += `</tr>`;
-  });
-
-  html += `</tbody></table></div>`;
-
-  // Détail horaire cliquable en dessous
-  html += `<div id="availDetail" style="margin-top:20px"></div>`;
-
-  document.getElementById('availContent').innerHTML = html;
-
-  // Ajouter les listeners pour le détail au clic sur une cellule
-  document.querySelectorAll('#availContent tbody tr').forEach((tr, ui) => {
-    const name = user_order[ui];
-    tr.querySelectorAll('td:not(:first-child)').forEach((td, di) => {
-      td.style.cursor = 'pointer';
-      td.addEventListener('click', () => showAvailDetail(name, di, data));
-    });
-  });
+      </div>
+      <div style="font-size:18px;font-weight:700;color:${active ? color : '#cbd5e1'};line-height:1;flex-shrink:0">${n}</div>
+    </div>`;
+  }).join('');
 }
 
-function showAvailDetail(name, dayIndex, data) {
-  const { users, slot_labels, day_dates } = data;
-  const udata = users[name];
-  if (!udata) return;
-  const dayData = udata.days[dayIndex];
-  const d = new Date(day_dates[dayIndex] + 'T12:00:00');
-  const DAY_FR = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
-  const dayName = `${DAY_FR[d.getDay() === 0 ? 6 : d.getDay()-1]} ${d.getDate()}/${d.getMonth()+1}`;
+function selectAvailCloser(name) {
+  _selectedAvailCloser = name;
+  const data = window.lastData;
+  if (!data) return;
 
-  const slots = dayData.slots;
-  const ui = data.user_order.indexOf(name);
-  const color = AVAIL_CLOSER_COLORS[ui % AVAIL_CLOSER_COLORS.length];
+  // Met à jour la sélection visuelle sur les chips
+  if (document.getElementById('availChipsRow')) renderAvailChips(data);
 
-  let rows = '';
-  let i = 0;
-  while (i < slots.length) {
-    if (slots[i] === 'unavailable') { i++; continue; }
-    // Regrouper les slots consécutifs de même état
-    const st = slots[i];
-    let j = i + 1;
-    while (j < slots.length && slots[j] === st) j++;
-    const fromLabel = slot_labels[i];
-    const toLabel   = slot_labels[Math.min(j, slot_labels.length - 1)];
-    const durH      = (j - i) * 0.5;
-    const stInfo = st === 'available'
-      ? { bg: '#f0fdf4', color: '#16a34a', label: '✅ Disponible' }
-      : st === 'blocked'
-      ? { bg: '#fff7ed', color: '#ea580c', label: '⛔ Bloqué (agenda externe)' }
-      : { bg: '#fef2f2', color: '#dc2626', label: '📅 RDV posé' };
-    rows += `<tr style="background:${stInfo.bg}">
-      <td style="padding:7px 12px;font-weight:600;color:${stInfo.color}">${stInfo.label}</td>
-      <td style="padding:7px 12px;color:#374151">${fromLabel} → ${toLabel}</td>
-      <td style="padding:7px 12px;color:#64748b">${durH}h</td>
-    </tr>`;
-    i = j;
-  }
+  const container = document.getElementById('availCalContainer');
+  container.innerHTML = '';
 
-  if (!rows) rows = `<tr><td colspan="3" style="padding:16px;text-align:center;color:#94a3b8">Pas de plage configurée ce jour</td></tr>`;
+  const weekDays  = data.week_days || [];
+  const dayLabels = getWeekDayLabels(weekDays);
+  const todayIdx  = getTodayIdx(weekDays);
 
-  document.getElementById('availDetail').innerHTML = `
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;max-width:520px">
-      <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px">
-        <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block"></span>
-        <strong style="color:#0f172a">${name}</strong>
-        <span style="color:#64748b;font-size:12px">— ${dayName}</span>
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">${rows}</table>
-    </div>`;
+  const gridEl = document.createElement('div');
+  gridEl.className = 'cal-grid';
+  gridEl.style.display = 'block';
+  container.appendChild(gridEl);
+
+  // Rendu identique à la vue individuelle du calendrier
+  renderGeneralGCal(data, gridEl, [name], weekDays, dayLabels, todayIdx);
+
+  // Overlay disponibilité si déjà chargée
+  if (_availData) addAvailBackgrounds(name);
+}
+
+function addAvailBackgrounds(closerName) {
+  const userDays = _availData?.users?.[closerName]?.days;
+  if (!userDays) return;
+  const gridEl = document.getElementById('availCalContainer')?.querySelector('.cal-grid');
+  if (!gridEl) return;
+  const dayCols = gridEl.querySelectorAll('.gcal-day-col');
+  dayCols.forEach((col, di) => {
+    const slots = userDays[di]?.slots || [];
+    // Retire un ancien overlay s'il existe
+    col.querySelector('.avail-bg')?.remove();
+    const bg = document.createElement('div');
+    bg.className = 'avail-bg';
+    bg.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:0';
+    slots.forEach((st, si) => {
+      const fill = st === 'blocked'     ? 'rgba(251,146,60,0.28)'
+                 : st === 'unavailable' ? 'rgba(241,245,249,0.75)'
+                 : null;
+      if (!fill) return;
+      const strip = document.createElement('div');
+      strip.style.cssText = `position:absolute;left:0;right:0;top:${si * GCAL_SLOT_H}px;height:${GCAL_SLOT_H}px;background:${fill}`;
+      bg.appendChild(strip);
+    });
+    col.style.position = 'relative';
+    col.prepend(bg);
+  });
 }
 </script>
 </body>
