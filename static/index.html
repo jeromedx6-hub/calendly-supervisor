@@ -2996,14 +2996,11 @@ function renderAvailChips(data) {
     const active = n > 0;
     const sel    = c === _selectedAvailCloser;
     const pct    = Math.round((n / maxCount) * 100);
-    // Compte les créneaux disponibles depuis _availData
-    let dispo = 0;
-    if (_availData?.users?.[c]?.days) {
-      _availData.users[c].days.forEach(day =>
-        day.slots.forEach(slot => { if (slot === 'available') dispo++; })
-      );
-    }
-    const dispoStr = _availData ? `<div style="font-size:9px;color:#64748b;margin-top:2px;font-weight:500">${dispo} dispo</div>` : '';
+    // Créneaux bookables = calculé par Calendly natif (durée + buffer avant/après)
+    const dispo    = _availData?.users?.[c]?.dispo_count ?? null;
+    const dispoStr = dispo !== null
+      ? `<div style="font-size:9px;color:#64748b;margin-top:2px;font-weight:500">${dispo} dispo</div>`
+      : '';
     return `<div onclick="selectAvailCloser('${c}')" style="
       display:inline-flex;align-items:center;gap:8px;cursor:pointer;
       background:${sel ? '#f0f9ff' : (active ? '#fff' : '#f8fafc')};

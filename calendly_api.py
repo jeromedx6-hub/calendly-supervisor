@@ -272,6 +272,25 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
     cache_set(cache_key, result)
     return result
 
+# ── Event types d'un closer (avec durée + buffer) ─────────────────────────────
+def get_user_event_types(user_uri: str) -> list:
+    """Retourne les event types actifs d'un closer (uri + durée). Cache 1h."""
+    ckey = f"etypes_{user_uri}"
+    cached = cache_get(ckey)
+    if cached is not None:
+        return cached
+    try:
+        data = api_get(f"{CALENDLY_BASE}/event_types", {"user": user_uri, "active": "true", "count": 10})
+        result = [
+            {"uri": e["uri"], "name": e.get("name", ""), "duration": e.get("duration", 30)}
+            for e in data.get("collection", []) if e.get("uri")
+        ]
+    except Exception:
+        result = []
+    cache_set(ckey, result, ttl=3600)
+    return result
+
+
 # ── Events org-level pour la semaine (pour disponibilité + invités) ────────────
 def _get_org_events_week(start_utc: str, end_utc: str) -> dict:
     """Fetch all active org events for the week, grouped by user URI. Cache 5 min."""
@@ -409,7 +428,21 @@ def build_availability_week(start_day: datetime) -> dict:
                 else:
                     slots.append("available")
             days.append({"date": day_str, "slots": slots})
-        return name, {"days": days}
+
+        # Compte les vrais créneaux bookables via Calendly natif
+        # (prend en compte durée du RDV + buffer avant/après + agenda externe)
+        dispo_count = 0
+        try:
+            ets = get_user_event_types(user_uri)
+            # Event type principal = 60 min en priorité, sinon le premier actif
+            primary = next((e for e in ets if e["duration"] == 60), ets[0] if ets else None)
+            if primary:
+                avail = get_event_type_available_times([primary["uri"]], start_utc, end_utc)
+                dispo_count = sum(len(times) for times in avail.values())
+        except Exception:
+            pass
+
+        return name, {"days": days, "dispo_count": dispo_count}
 
     with ThreadPoolExecutor(max_workers=len(members)) as ex:
         for name, data in ex.map(_fetch_member, members):
