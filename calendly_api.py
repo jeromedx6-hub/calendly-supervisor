@@ -146,7 +146,7 @@ def get_busy(user_uri, start_utc, end_utc):
             result.append((bs, be, bt.get("type", "external")))
         except Exception:
             pass
-    cache_set(ckey, result, ttl=900)  # busy times : cache 15 min
+    cache_set(ckey, result, ttl=120)  # busy times : cache 2 min (annulations prises en compte rapidement)
     return result
 
 # ── Statut d'activité (cache 24h) ─────────────────────────────────────────────
@@ -301,7 +301,7 @@ def _get_org_events_week(start_utc: str, end_utc: str) -> dict:
             "duration": int((f - s).total_seconds() / 60),
             "uri":      e.get("uri", ""),
         })
-    cache_set(ckey, by_user, ttl=300)
+    cache_set(ckey, by_user, ttl=90)  # 90s — les annulations doivent disparaître vite
     return by_user
 
 
@@ -426,7 +426,7 @@ def build_availability_week(start_day: datetime) -> dict:
         "user_order":  user_order,
         "users":       users_data,
     }
-    cache_set(ckey, result, ttl=300)  # 5 min — les RDV peuvent changer
+    cache_set(ckey, result, ttl=120)  # 2 min — annulations reflétées rapidement
     return result
 
 # ── Calcul d'une semaine calendaire ───────────────────────────────────────────
