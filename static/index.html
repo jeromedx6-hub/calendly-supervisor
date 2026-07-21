@@ -296,6 +296,24 @@
   .live-card-time { font-size:11px; color:#94a3b8; margin-top:2px; }
   .live-empty { text-align:center; padding:32px; color:#94a3b8; font-size:13px;
     background:#fff; border-radius:10px; border:1px dashed #e2e8f0; }
+  .view-toggle-btn { height:28px; width:28px; border-radius:5px; border:1px solid #e2e8f0;
+    background:#f8fafc; color:#64748b; font-size:13px; cursor:pointer; display:flex;
+    align-items:center; justify-content:center; transition:all .15s; }
+  .view-toggle-btn.active { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .view-toggle-btn:hover:not(.active) { background:#e2e8f0; }
+  .live-table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px;
+    overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.06); font-size:12px; }
+  .live-table th { background:#0f172a; color:#94a3b8; font-size:10px; font-weight:600;
+    text-transform:uppercase; letter-spacing:.05em; padding:9px 12px; text-align:left; white-space:nowrap; }
+  .live-table td { padding:9px 12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+  .live-table tr:last-child td { border-bottom:none; }
+  .live-table tr:hover td { background:#f8fafc; cursor:pointer; }
+  .live-table .tbl-lead { font-weight:700; color:#0f172a; }
+  .live-table .tbl-email { font-size:11px; color:#64748b; }
+  .live-table .tbl-event { color:#3b82f6; font-weight:500; }
+  .live-table .tbl-closer { font-weight:600; }
+  .live-table .tbl-delay { color:#f59e0b; font-weight:600; font-size:11px; }
+  .live-table .tbl-actions { white-space:nowrap; }
   .prospects-search-wrap {
     display:flex; gap:10px; margin-bottom:24px;
     background:#fff; border-radius:10px; padding:14px 16px;
@@ -494,6 +512,10 @@
           style="height:30px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#1e293b;padding:0 8px;font-size:11px;font-weight:500;cursor:pointer;">
           <option value="all">Tous les events</option>
         </select>
+        <div style="display:flex;gap:3px">
+          <button class="view-toggle-btn active" id="viewBtnCard" onclick="setLiveFeedView('card')" title="Vue carte">⊞</button>
+          <button class="view-toggle-btn" id="viewBtnTable" onclick="setLiveFeedView('table')" title="Vue table">☰</button>
+        </div>
         <button onclick="exportBookings()" title="Exporter tous les bookings en CSV"
           style="height:30px;border-radius:6px;border:1px solid #0f172a;background:#0f172a;color:#fff;padding:0 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">
           ⬇ Export CSV
@@ -2705,6 +2727,78 @@ function leadTime(receivedIso, rdvDate, rdvTime) {
   return hrs > 0 ? `${days}j ${hrs}h avant le RDV` : `${days}j avant le RDV`;
 }
 
+let _liveFeedViewMode = localStorage.getItem('liveFeedView') || 'card';
+
+function setLiveFeedView(mode) {
+  _liveFeedViewMode = mode;
+  localStorage.setItem('liveFeedView', mode);
+  document.getElementById('viewBtnCard').classList.toggle('active', mode === 'card');
+  document.getElementById('viewBtnTable').classList.toggle('active', mode === 'table');
+  applyLiveFeedFilter(false);
+}
+
+// Initialiser l'état des boutons au chargement
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('viewBtnCard')?.classList.toggle('active', _liveFeedViewMode === 'card');
+  document.getElementById('viewBtnTable')?.classList.toggle('active', _liveFeedViewMode === 'table');
+});
+
+async function renderLiveFeedTable(bookings) {
+  const container = document.getElementById('liveFeedCards');
+  if (!container) return;
+  if (!bookings || bookings.length === 0) {
+    container.innerHTML = `<div class="live-empty">📭 Aucune prise de RDV pour ce filtre.</div>`;
+    return;
+  }
+  try {
+    const colorMap = {};
+    (window.lastData?.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
+
+    const actionMap = {};
+    await Promise.all(bookings.map(async b => {
+      if (b.cancel_url || b.reschedule_url) {
+        actionMap[b.event_uri] = { cancel_url: b.cancel_url, reschedule_url: b.reschedule_url };
+        return;
+      }
+      if (!b.event_uri) return;
+      try {
+        const ar = await fetch(`/api/invitee_actions?event_uri=${encodeURIComponent(b.event_uri)}`);
+        if (ar.ok) actionMap[b.event_uri] = await ar.json();
+      } catch(e) {}
+    }));
+
+    const rows = bookings.map(b => {
+      const color       = colorMap[b.member_name] || '#6d28d9';
+      const dispName    = getDisplayName(b.member_name);
+      const lead        = b.lead_name  || '—';
+      const email       = b.lead_email || '';
+      const rdvDate     = formatRdvDate(b.date, b.start_time);
+      const receivedFmt = b.received_at ? formatDatetime(b.received_at) : '—';
+      const delay       = b.received_at ? leadTime(b.received_at, b.date, b.start_time) : null;
+      const emailEnc    = encodeURIComponent(email);
+      const nameEnc     = encodeURIComponent(lead);
+      const acts        = actionMap[b.event_uri] || {};
+      const liveLinks   = calendlyActionLinks(acts.cancel_url, acts.reschedule_url, true, b.event_uri);
+      return `<tr onclick="openContactHistory('${emailEnc}','${nameEnc}')" title="Voir l'historique complet">
+        <td><div class="tbl-lead">${lead}</div>${email ? `<div class="tbl-email">✉ ${email}</div>` : ''}</td>
+        <td class="tbl-event">${b.event_type || '—'}</td>
+        <td style="white-space:nowrap">${rdvDate}</td>
+        <td class="tbl-closer" style="color:${color}">${dispName}</td>
+        <td style="white-space:nowrap;color:#94a3b8">${receivedFmt}</td>
+        <td class="tbl-delay">${delay ? `⏱ ${delay}` : '—'}</td>
+        <td class="tbl-actions" onclick="event.stopPropagation()">${liveLinks}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `<table class="live-table">
+      <thead><tr>
+        <th>Lead</th><th>Event</th><th>Date RDV</th><th>Closer</th><th>Pris le</th><th>Délai</th><th>Actions</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  } catch(e) { console.error('[LiveFeed] table render error', e); }
+}
+
 async function renderLiveFeedCards(bookings, isNew) {
   const container = document.getElementById('liveFeedCards');
   if (!container) return;
@@ -2822,7 +2916,11 @@ function applyLiveFeedFilter(isNew) {
       ? `${_liveFeedAllData.length} RDV`
       : `${filtered.length} / ${_liveFeedAllData.length} RDV`;
   }
-  renderLiveFeedCards(filtered, !!isNew);
+  if (_liveFeedViewMode === 'table') {
+    renderLiveFeedTable(filtered);
+  } else {
+    renderLiveFeedCards(filtered, !!isNew);
+  }
 }
 
 function exportBookings() {
