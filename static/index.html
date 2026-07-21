@@ -2761,6 +2761,8 @@ let _tableEventFilter  = 'all';
 let _tableDateFrom     = '';
 let _tableDateTo       = '';
 let _tableDelayFilter  = 'all';
+let _tableReceivedFrom = '';
+let _tableReceivedTo   = '';
 
 function setTableSort(col) {
   if (_tableSort.col === col) _tableSort.dir = _tableSort.dir === 'asc' ? 'desc' : 'asc';
@@ -2771,7 +2773,9 @@ function setTableCloserFilter(val) { _tableCloserFilter = val; applyLiveFeedFilt
 function setTableEventFilter(val)  { _tableEventFilter  = val; applyLiveFeedFilter(false); }
 function setTableDateFrom(val)     { _tableDateFrom     = val; applyLiveFeedFilter(false); }
 function setTableDateTo(val)       { _tableDateTo       = val; applyLiveFeedFilter(false); }
-function setTableDelayFilter(val)  { _tableDelayFilter  = val; applyLiveFeedFilter(false); }
+function setTableDelayFilter(val)    { _tableDelayFilter    = val; applyLiveFeedFilter(false); }
+function setTableReceivedFrom(val)   { _tableReceivedFrom   = val; applyLiveFeedFilter(false); }
+function setTableReceivedTo(val)     { _tableReceivedTo     = val; applyLiveFeedFilter(false); }
 
 function _filterTableBookings(bookings) {
   return bookings.filter(b => {
@@ -2779,6 +2783,12 @@ function _filterTableBookings(bookings) {
     if (_tableCloserFilter !== 'all' && b.member_name !== _tableCloserFilter) return false;
     if (_tableDateFrom && b.date < _tableDateFrom) return false;
     if (_tableDateTo   && b.date > _tableDateTo)   return false;
+    if (_tableReceivedFrom || _tableReceivedTo) {
+      const rd = b.received_at ? b.received_at.slice(0, 10) : null;
+      if (!rd) return false;
+      if (_tableReceivedFrom && rd < _tableReceivedFrom) return false;
+      if (_tableReceivedTo   && rd > _tableReceivedTo)   return false;
+    }
     if (_tableDelayFilter !== 'all') {
       const mins = _delayMin(b.received_at, b.date, b.start_time);
       if (mins === null) return false;
@@ -2877,7 +2887,15 @@ async function renderLiveFeedTable(bookings) {
             <option value="all">Tous</option>${cOpts}
           </select>
         </td>
-        <td></td>
+        <td>
+          <div style="display:flex;gap:4px;align-items:center">
+            <input type="date" class="tbl-filter-input" style="flex:1;min-width:0" value="${_tableReceivedFrom}"
+              onchange="setTableReceivedFrom(this.value)" title="Pris à partir du">
+            <span style="color:#475569;font-size:9px;flex-shrink:0">→</span>
+            <input type="date" class="tbl-filter-input" style="flex:1;min-width:0" value="${_tableReceivedTo}"
+              onchange="setTableReceivedTo(this.value)" title="Pris jusqu'au">
+          </div>
+        </td>
         <td>
           <select class="tbl-hdr-sel" onchange="setTableDelayFilter(this.value)">
             <option value="all">Tous</option>
