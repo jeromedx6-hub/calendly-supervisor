@@ -319,7 +319,11 @@
   .sort-ic { font-size:9px; opacity:.45; margin-left:3px; }
   .sort-ic.on { opacity:1; color:#60a5fa; }
   .tbl-hdr-sel { height:20px; border-radius:4px; border:1px solid #334155; background:#1e293b;
-    color:#94a3b8; font-size:10px; padding:0 4px; cursor:pointer; max-width:90px; }
+    color:#94a3b8; font-size:10px; padding:0 4px; cursor:pointer; width:100%; box-sizing:border-box; }
+  .tbl-filter-row td { background:#162032; padding:5px 8px; border-bottom:2px solid #0f172a; }
+  .tbl-filter-input { height:20px; border-radius:4px; border:1px solid #334155; background:#0f172a;
+    color:#94a3b8; font-size:10px; padding:0 5px; width:100%; box-sizing:border-box; }
+  .tbl-filter-input::-webkit-calendar-picker-indicator { filter:invert(0.5); cursor:pointer; }
   .prospects-search-wrap {
     display:flex; gap:10px; margin-bottom:24px;
     background:#fff; border-radius:10px; padding:14px 16px;
@@ -2751,6 +2755,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let _tableSort = { col: null, dir: 'asc' };
 let _tableCloserFilter = 'all';
+let _tableEventFilter  = 'all';
+let _tableDateFrom     = '';
+let _tableDateTo       = '';
+let _tableDelayFilter  = 'all';
 
 function setTableSort(col) {
   if (_tableSort.col === col) _tableSort.dir = _tableSort.dir === 'asc' ? 'desc' : 'asc';
@@ -2758,6 +2766,28 @@ function setTableSort(col) {
   applyLiveFeedFilter(false);
 }
 function setTableCloserFilter(val) { _tableCloserFilter = val; applyLiveFeedFilter(false); }
+function setTableEventFilter(val)  { _tableEventFilter  = val; applyLiveFeedFilter(false); }
+function setTableDateFrom(val)     { _tableDateFrom     = val; applyLiveFeedFilter(false); }
+function setTableDateTo(val)       { _tableDateTo       = val; applyLiveFeedFilter(false); }
+function setTableDelayFilter(val)  { _tableDelayFilter  = val; applyLiveFeedFilter(false); }
+
+function _filterTableBookings(bookings) {
+  return bookings.filter(b => {
+    if (_tableEventFilter !== 'all' && b.event_type !== _tableEventFilter) return false;
+    if (_tableCloserFilter !== 'all' && b.member_name !== _tableCloserFilter) return false;
+    if (_tableDateFrom && b.date < _tableDateFrom) return false;
+    if (_tableDateTo   && b.date > _tableDateTo)   return false;
+    if (_tableDelayFilter !== 'all') {
+      const mins = _delayMin(b.received_at, b.date, b.start_time);
+      if (mins === null) return false;
+      if (_tableDelayFilter === '<2h'  && mins >= 120)                   return false;
+      if (_tableDelayFilter === '<24h' && mins >= 1440)                  return false;
+      if (_tableDelayFilter === '1-3j' && (mins < 1440 || mins >= 4320)) return false;
+      if (_tableDelayFilter === '>3j'  && mins < 4320)                   return false;
+    }
+    return true;
+  });
+}
 
 function _delayMin(received_at, date, start_time) {
   if (!received_at || !date || !start_time) return null;
@@ -2786,14 +2816,9 @@ async function renderLiveFeedTable(bookings) {
   const container = document.getElementById('liveFeedCards');
   if (!container) return;
 
-  // Filtre closer + tri
-  let data = _tableCloserFilter === 'all' ? bookings : bookings.filter(b => b.member_name === _tableCloserFilter);
-  data = _sortBookings(data);
+  const allData = _liveFeedAllData || bookings;
+  let data = _sortBookings(_filterTableBookings(bookings));
 
-  if (!data || data.length === 0) {
-    container.innerHTML = `<div class="live-empty">📭 Aucune prise de RDV pour ce filtre.</div>`;
-    return;
-  }
   try {
     const colorMap = {};
     (window.lastData?.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
@@ -2805,55 +2830,83 @@ async function renderLiveFeedTable(bookings) {
       try { const ar = await fetch(`/api/invitee_actions?event_uri=${encodeURIComponent(b.event_uri)}`); if (ar.ok) actionMap[b.event_uri] = await ar.json(); } catch(e) {}
     }));
 
-    // En-tête dynamique
-    const si = col => {
-      if (_tableSort.col !== col) return `<span class="sort-ic">↕</span>`;
-      return `<span class="sort-ic on">${_tableSort.dir === 'asc' ? '↑' : '↓'}</span>`;
-    };
-    const allClosers = [...new Set(bookings.map(b => b.member_name).filter(Boolean))].sort();
-    const closerOpts = allClosers.map(c =>
-      `<option value="${c}" ${_tableCloserFilter===c?'selected':''}>${getDisplayName(c)}</option>`
-    ).join('');
+    const si = col => _tableSort.col !== col
+      ? `<span class="sort-ic">↕</span>`
+      : `<span class="sort-ic on">${_tableSort.dir === 'asc' ? '↑' : '↓'}</span>`;
 
-    const thead = `<thead><tr>
-      <th class="th-sort" onclick="setTableSort('lead')">Lead ${si('lead')}</th>
-      <th class="th-sort" onclick="setTableSort('event')">Event ${si('event')}</th>
-      <th class="th-sort" onclick="setTableSort('date')">Date RDV ${si('date')}</th>
-      <th>
-        <div style="display:flex;align-items:center;gap:5px">
-          <span class="th-sort" onclick="setTableSort('closer')" style="cursor:pointer;user-select:none">Closer ${si('closer')}</span>
-          <select class="tbl-hdr-sel" onclick="event.stopPropagation()" onchange="setTableCloserFilter(this.value)">
-            <option value="all">Tous</option>${closerOpts}
+    const allEvents  = [...new Set(allData.map(b => b.event_type).filter(Boolean))].sort();
+    const allClosers = [...new Set(allData.map(b => b.member_name).filter(Boolean))].sort();
+    const eOpts = allEvents.map(e  => `<option value="${e}" ${_tableEventFilter===e?'selected':''}>${e}</option>`).join('');
+    const cOpts = allClosers.map(c => `<option value="${c}" ${_tableCloserFilter===c?'selected':''}>${getDisplayName(c)}</option>`).join('');
+
+    const thead = `<thead>
+      <tr>
+        <th class="th-sort" onclick="setTableSort('lead')">Lead ${si('lead')}</th>
+        <th class="th-sort" onclick="setTableSort('event')">Event ${si('event')}</th>
+        <th class="th-sort" onclick="setTableSort('date')">Date RDV ${si('date')}</th>
+        <th class="th-sort" onclick="setTableSort('closer')">Closer ${si('closer')}</th>
+        <th class="th-sort" onclick="setTableSort('received')">Pris le ${si('received')}</th>
+        <th class="th-sort" onclick="setTableSort('delay')">Délai ${si('delay')}</th>
+        <th>Actions</th>
+      </tr>
+      <tr class="tbl-filter-row">
+        <td></td>
+        <td>
+          <select class="tbl-hdr-sel" onchange="setTableEventFilter(this.value)">
+            <option value="all">Tous</option>${eOpts}
           </select>
-        </div>
-      </th>
-      <th class="th-sort" onclick="setTableSort('received')">Pris le ${si('received')}</th>
-      <th class="th-sort" onclick="setTableSort('delay')">Délai ${si('delay')}</th>
-      <th>Actions</th>
-    </tr></thead>`;
+        </td>
+        <td>
+          <div style="display:flex;gap:3px">
+            <input type="date" class="tbl-filter-input" style="width:50%" value="${_tableDateFrom}"
+              onchange="setTableDateFrom(this.value)" title="À partir du">
+            <input type="date" class="tbl-filter-input" style="width:50%" value="${_tableDateTo}"
+              onchange="setTableDateTo(this.value)" title="Jusqu'au">
+          </div>
+        </td>
+        <td>
+          <select class="tbl-hdr-sel" onchange="setTableCloserFilter(this.value)">
+            <option value="all">Tous</option>${cOpts}
+          </select>
+        </td>
+        <td></td>
+        <td>
+          <select class="tbl-hdr-sel" onchange="setTableDelayFilter(this.value)">
+            <option value="all">Tous</option>
+            <option value="<2h"  ${_tableDelayFilter==='<2h'?'selected':''}>&#60; 2h</option>
+            <option value="<24h" ${_tableDelayFilter==='<24h'?'selected':''}>&#60; 24h</option>
+            <option value="1-3j" ${_tableDelayFilter==='1-3j'?'selected':''}>1 – 3 jours</option>
+            <option value=">3j"  ${_tableDelayFilter==='>3j'?'selected':''}>> 3 jours</option>
+          </select>
+        </td>
+        <td></td>
+      </tr>
+    </thead>`;
 
-    const rows = data.map(b => {
-      const color       = colorMap[b.member_name] || '#6d28d9';
-      const dispName    = getDisplayName(b.member_name);
-      const lead        = b.lead_name  || '—';
-      const email       = b.lead_email || '';
-      const rdvDate     = formatRdvDate(b.date, b.start_time);
-      const receivedFmt = b.received_at ? formatDatetime(b.received_at) : '—';
-      const delay       = b.received_at ? leadTime(b.received_at, b.date, b.start_time) : null;
-      const emailEnc    = encodeURIComponent(email);
-      const nameEnc     = encodeURIComponent(lead);
-      const acts        = actionMap[b.event_uri] || {};
-      const liveLinks   = calendlyActionLinks(acts.cancel_url, acts.reschedule_url, true, b.event_uri);
-      return `<tr onclick="openContactHistory('${emailEnc}','${nameEnc}')" title="Voir l'historique complet">
-        <td><div class="tbl-lead">${lead}</div>${email ? `<div class="tbl-email">✉ ${email}</div>` : ''}</td>
-        <td class="tbl-event">${b.event_type || '—'}</td>
-        <td style="white-space:nowrap">${rdvDate}</td>
-        <td class="tbl-closer" style="color:${color}">${dispName}</td>
-        <td style="white-space:nowrap;color:#94a3b8">${receivedFmt}</td>
-        <td class="tbl-delay">${delay ? `⏱ ${delay}` : '—'}</td>
-        <td class="tbl-actions" onclick="event.stopPropagation()">${liveLinks}</td>
-      </tr>`;
-    }).join('');
+    const rows = data.length === 0
+      ? `<tr><td colspan="7" style="text-align:center;padding:28px;color:#94a3b8">📭 Aucun résultat pour ces filtres</td></tr>`
+      : data.map(b => {
+          const color       = colorMap[b.member_name] || '#6d28d9';
+          const dispName    = getDisplayName(b.member_name);
+          const lead        = b.lead_name  || '—';
+          const email       = b.lead_email || '';
+          const rdvDate     = formatRdvDate(b.date, b.start_time);
+          const receivedFmt = b.received_at ? formatDatetime(b.received_at) : '—';
+          const delay       = b.received_at ? leadTime(b.received_at, b.date, b.start_time) : null;
+          const emailEnc    = encodeURIComponent(email);
+          const nameEnc     = encodeURIComponent(lead);
+          const acts        = actionMap[b.event_uri] || {};
+          const liveLinks   = calendlyActionLinks(acts.cancel_url, acts.reschedule_url, true, b.event_uri);
+          return `<tr onclick="openContactHistory('${emailEnc}','${nameEnc}')" title="Voir l'historique complet">
+            <td><div class="tbl-lead">${lead}</div>${email ? `<div class="tbl-email">✉ ${email}</div>` : ''}</td>
+            <td class="tbl-event">${b.event_type || '—'}</td>
+            <td style="white-space:nowrap">${rdvDate}</td>
+            <td class="tbl-closer" style="color:${color}">${dispName}</td>
+            <td style="white-space:nowrap;color:#94a3b8">${receivedFmt}</td>
+            <td class="tbl-delay">${delay ? `⏱ ${delay}` : '—'}</td>
+            <td class="tbl-actions" onclick="event.stopPropagation()">${liveLinks}</td>
+          </tr>`;
+        }).join('');
 
     container.innerHTML = `<table class="live-table">${thead}<tbody>${rows}</tbody></table>`;
   } catch(e) { console.error('[LiveFeed] table render error', e); }
