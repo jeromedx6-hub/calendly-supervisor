@@ -844,6 +844,26 @@ def bookings_for_date():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/debug_schedules")
+def debug_schedules():
+    try:
+        members = calendly_api.get_members()
+        result = {}
+        for m in members:
+            try:
+                data = calendly_api.api_get(f"{calendly_api.CALENDLY_BASE}/user_availability_schedules", {"user": m["uri"]})
+                schedules = data.get("collection", [])
+                default = next((s for s in schedules if s.get("default")), schedules[0] if schedules else None)
+                result[m["name"]] = {
+                    "timezone": default.get("timezone") if default else None,
+                    "rules_sample": [{"wday": r.get("wday"), "intervals": r.get("intervals")} for r in (default.get("rules", [])[:3] if default else [])]
+                }
+            except Exception as ex:
+                result[m["name"]] = {"error": str(ex)}
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/debug")
 def debug():
     key = os.environ.get("CALENDLY_API_KEY", "")
