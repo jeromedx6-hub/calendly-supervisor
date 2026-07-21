@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
+from zoneinfo import ZoneInfo
 import time
 
 CALENDLY_BASE = "https://api.calendly.com"
@@ -102,6 +103,43 @@ def get_members():
     return members
 
 # ── Schedules ─────────────────────────────────────────────────────────────────
+_PARIS_TZ = ZoneInfo("Europe/Paris")
+_REF_MONDAY = datetime(2026, 7, 21)  # lundi de référence pour la conversion
+
+def _to_paris_intervals(intervals_by_wday, source_tz_str):
+    """Convertit les intervalles de travail du fuseau Calendly vers Europe/Paris."""
+    try:
+        src_tz = ZoneInfo(source_tz_str)
+        # Même offset que Paris ? (vérifié en été)
+        ref = datetime(2026, 7, 15, 12, 0, tzinfo=src_tz)
+        if ref.utcoffset() == datetime(2026, 7, 15, 12, 0, tzinfo=_PARIS_TZ).utcoffset():
+            return intervals_by_wday
+    except Exception:
+        return intervals_by_wday
+
+    new_wh = {i: [] for i in range(7)}
+    for wday, intervals in intervals_by_wday.items():
+        ref_date = _REF_MONDAY + timedelta(days=wday)
+        for (fh, fm, th, tm) in intervals:
+            dt_f = datetime(ref_date.year, ref_date.month, ref_date.day, fh, fm, tzinfo=src_tz)
+            # "to" == 00:00 → minuit = début du jour suivant
+            if th == 0 and tm == 0:
+                dt_t = datetime(ref_date.year, ref_date.month, ref_date.day, tzinfo=src_tz) + timedelta(days=1)
+            else:
+                dt_t = datetime(ref_date.year, ref_date.month, ref_date.day, th, tm, tzinfo=src_tz)
+            pf = dt_f.astimezone(_PARIS_TZ)
+            pt = dt_t.astimezone(_PARIS_TZ)
+            pf_wd, pt_wd = pf.weekday(), pt.weekday()
+            if pf_wd == pt_wd:
+                new_wh[pf_wd].append((pf.hour, pf.minute, pt.hour, pt.minute))
+            else:
+                # Chevauchement minuit : on coupe en deux
+                new_wh[pf_wd].append((pf.hour, pf.minute, 0, 0))
+                if pt.hour > 0 or pt.minute > 0:
+                    new_wh[pt_wd % 7].append((0, 0, pt.hour, pt.minute))
+    return new_wh
+
+
 def get_schedule(user_uri):
     ckey = f"sched_{user_uri}"
     cached = cache_get(ckey)
@@ -113,8 +151,10 @@ def get_schedule(user_uri):
 
     working_hours = {i: [] for i in range(7)}
     date_overrides = {}
+    source_tz = "Europe/Paris"
 
     if default:
+        source_tz = default.get("timezone", "Europe/Paris")
         for rule in default.get("rules", []):
             ivs = rule.get("intervals", [])
             parsed = [(int(iv["from"][:2]), int(iv["from"][3:]), int(iv["to"][:2]), int(iv["to"][3:])) for iv in ivs]
@@ -123,8 +163,10 @@ def get_schedule(user_uri):
             elif rule.get("type") == "date":
                 date_overrides[rule.get("date", "")] = parsed
 
+    working_hours = _to_paris_intervals(working_hours, source_tz)
+
     result = {"working_hours": working_hours, "date_overrides": date_overrides}
-    cache_set(ckey, result, ttl=86400)  # schedules changent rarement — cache 24h
+    cache_set(ckey, result, ttl=86400)
     return result
 
 # ── Busy times ────────────────────────────────────────────────────────────────
