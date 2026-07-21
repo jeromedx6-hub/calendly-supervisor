@@ -314,6 +314,12 @@
   .live-table .tbl-closer { font-weight:600; }
   .live-table .tbl-delay { color:#f59e0b; font-weight:600; font-size:11px; }
   .live-table .tbl-actions { white-space:nowrap; }
+  .live-table th.th-sort { cursor:pointer; user-select:none; }
+  .live-table th.th-sort:hover { color:#cbd5e1; }
+  .sort-ic { font-size:9px; opacity:.45; margin-left:3px; }
+  .sort-ic.on { opacity:1; color:#60a5fa; }
+  .tbl-hdr-sel { height:20px; border-radius:4px; border:1px solid #334155; background:#1e293b;
+    color:#94a3b8; font-size:10px; padding:0 4px; cursor:pointer; max-width:90px; }
   .prospects-search-wrap {
     display:flex; gap:10px; margin-bottom:24px;
     background:#fff; border-radius:10px; padding:14px 16px;
@@ -2743,10 +2749,48 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('viewBtnTable')?.classList.toggle('active', _liveFeedViewMode === 'table');
 });
 
+let _tableSort = { col: null, dir: 'asc' };
+let _tableCloserFilter = 'all';
+
+function setTableSort(col) {
+  if (_tableSort.col === col) _tableSort.dir = _tableSort.dir === 'asc' ? 'desc' : 'asc';
+  else _tableSort = { col, dir: 'asc' };
+  applyLiveFeedFilter(false);
+}
+function setTableCloserFilter(val) { _tableCloserFilter = val; applyLiveFeedFilter(false); }
+
+function _delayMin(received_at, date, start_time) {
+  if (!received_at || !date || !start_time) return null;
+  try { return Math.round((new Date(`${date}T${start_time}:00`) - new Date(received_at)) / 60000); }
+  catch(e) { return null; }
+}
+
+function _sortBookings(arr) {
+  const { col, dir } = _tableSort;
+  if (!col) return arr;
+  const m = dir === 'asc' ? 1 : -1;
+  return [...arr].sort((a, b) => {
+    let va, vb;
+    if (col === 'lead')     { va = (a.lead_name||'').toLowerCase();  vb = (b.lead_name||'').toLowerCase(); }
+    else if (col === 'event')    { va = (a.event_type||'').toLowerCase(); vb = (b.event_type||'').toLowerCase(); }
+    else if (col === 'date')     { va = `${a.date}T${a.start_time||''}`; vb = `${b.date}T${b.start_time||''}`; }
+    else if (col === 'closer')   { va = (a.member_name||'').toLowerCase(); vb = (b.member_name||'').toLowerCase(); }
+    else if (col === 'received') { va = a.received_at||''; vb = b.received_at||''; }
+    else if (col === 'delay')    { va = _delayMin(a.received_at,a.date,a.start_time)??Infinity; vb = _delayMin(b.received_at,b.date,b.start_time)??Infinity; }
+    else return 0;
+    return va < vb ? -m : va > vb ? m : 0;
+  });
+}
+
 async function renderLiveFeedTable(bookings) {
   const container = document.getElementById('liveFeedCards');
   if (!container) return;
-  if (!bookings || bookings.length === 0) {
+
+  // Filtre closer + tri
+  let data = _tableCloserFilter === 'all' ? bookings : bookings.filter(b => b.member_name === _tableCloserFilter);
+  data = _sortBookings(data);
+
+  if (!data || data.length === 0) {
     container.innerHTML = `<div class="live-empty">📭 Aucune prise de RDV pour ce filtre.</div>`;
     return;
   }
@@ -2755,19 +2799,40 @@ async function renderLiveFeedTable(bookings) {
     (window.lastData?.user_order || []).forEach((n,i) => colorMap[n] = CLOSER_COLORS[i % CLOSER_COLORS.length]);
 
     const actionMap = {};
-    await Promise.all(bookings.map(async b => {
-      if (b.cancel_url || b.reschedule_url) {
-        actionMap[b.event_uri] = { cancel_url: b.cancel_url, reschedule_url: b.reschedule_url };
-        return;
-      }
+    await Promise.all(data.map(async b => {
+      if (b.cancel_url || b.reschedule_url) { actionMap[b.event_uri] = { cancel_url: b.cancel_url, reschedule_url: b.reschedule_url }; return; }
       if (!b.event_uri) return;
-      try {
-        const ar = await fetch(`/api/invitee_actions?event_uri=${encodeURIComponent(b.event_uri)}`);
-        if (ar.ok) actionMap[b.event_uri] = await ar.json();
-      } catch(e) {}
+      try { const ar = await fetch(`/api/invitee_actions?event_uri=${encodeURIComponent(b.event_uri)}`); if (ar.ok) actionMap[b.event_uri] = await ar.json(); } catch(e) {}
     }));
 
-    const rows = bookings.map(b => {
+    // En-tête dynamique
+    const si = col => {
+      if (_tableSort.col !== col) return `<span class="sort-ic">↕</span>`;
+      return `<span class="sort-ic on">${_tableSort.dir === 'asc' ? '↑' : '↓'}</span>`;
+    };
+    const allClosers = [...new Set(bookings.map(b => b.member_name).filter(Boolean))].sort();
+    const closerOpts = allClosers.map(c =>
+      `<option value="${c}" ${_tableCloserFilter===c?'selected':''}>${getDisplayName(c)}</option>`
+    ).join('');
+
+    const thead = `<thead><tr>
+      <th class="th-sort" onclick="setTableSort('lead')">Lead ${si('lead')}</th>
+      <th class="th-sort" onclick="setTableSort('event')">Event ${si('event')}</th>
+      <th class="th-sort" onclick="setTableSort('date')">Date RDV ${si('date')}</th>
+      <th>
+        <div style="display:flex;align-items:center;gap:5px">
+          <span class="th-sort" onclick="setTableSort('closer')" style="cursor:pointer;user-select:none">Closer ${si('closer')}</span>
+          <select class="tbl-hdr-sel" onclick="event.stopPropagation()" onchange="setTableCloserFilter(this.value)">
+            <option value="all">Tous</option>${closerOpts}
+          </select>
+        </div>
+      </th>
+      <th class="th-sort" onclick="setTableSort('received')">Pris le ${si('received')}</th>
+      <th class="th-sort" onclick="setTableSort('delay')">Délai ${si('delay')}</th>
+      <th>Actions</th>
+    </tr></thead>`;
+
+    const rows = data.map(b => {
       const color       = colorMap[b.member_name] || '#6d28d9';
       const dispName    = getDisplayName(b.member_name);
       const lead        = b.lead_name  || '—';
@@ -2790,12 +2855,7 @@ async function renderLiveFeedTable(bookings) {
       </tr>`;
     }).join('');
 
-    container.innerHTML = `<table class="live-table">
-      <thead><tr>
-        <th>Lead</th><th>Event</th><th>Date RDV</th><th>Closer</th><th>Pris le</th><th>Délai</th><th>Actions</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+    container.innerHTML = `<table class="live-table">${thead}<tbody>${rows}</tbody></table>`;
   } catch(e) { console.error('[LiveFeed] table render error', e); }
 }
 
