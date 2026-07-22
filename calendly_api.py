@@ -133,8 +133,8 @@ def _to_paris_intervals(intervals_by_wday, source_tz_str):
             if pf_wd == pt_wd:
                 new_wh[pf_wd].append((pf.hour, pf.minute, pt.hour, pt.minute))
             else:
-                # Chevauchement minuit : on coupe en deux
-                new_wh[pf_wd].append((pf.hour, pf.minute, 0, 0))
+                # Chevauchement minuit : 24:00 = 1440 min, géré par time_to_min
+                new_wh[pf_wd].append((pf.hour, pf.minute, 24, 0))
                 if pt.hour > 0 or pt.minute > 0:
                     new_wh[pt_wd % 7].append((0, 0, pt.hour, pt.minute))
     return new_wh
