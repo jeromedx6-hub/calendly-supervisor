@@ -856,7 +856,7 @@ def debug_schedules():
                 default = next((s for s in schedules if s.get("default")), schedules[0] if schedules else None)
                 result[m["name"]] = {
                     "timezone": default.get("timezone") if default else None,
-                    "rules_sample": [{"wday": r.get("wday"), "intervals": r.get("intervals")} for r in (default.get("rules", [])[:3] if default else [])]
+                    "rules": [{"wday": r.get("wday"), "type": r.get("type"), "intervals": r.get("intervals")} for r in (default.get("rules", []) if default else [])]
                 }
             except Exception as ex:
                 result[m["name"]] = {"error": str(ex)}
