@@ -1642,6 +1642,9 @@ function renderGrid(data) {
     document.getElementById('closerStats').textContent = '';
     // Le statsRow est déjà géré par renderGeneralGCal (compte les events du closer)
   }
+
+  // Injecter les dispos si déjà chargées (persiste à travers les re-renders)
+  if (_availData) injectDispoInCalendar(weekDays);
 }
 
 function updateStats(isGeneral, gridData, data, effectiveOrder) {
