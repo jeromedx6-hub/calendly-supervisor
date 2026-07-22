@@ -1499,12 +1499,13 @@ async function loadWeek(offset) {
 
 // ── Dispo injection dans le calendrier principal ───────────────────────────
 async function fetchAndInjectCalendarDispo(startDate, weekDays) {
+  const myId = ++_availFetchId;
   try {
     const r = await fetch(`/api/closer_availability?start_date=${startDate}`);
-    if (!r.ok) return;
+    if (!r.ok || myId !== _availFetchId) return;
     _availData = await r.json();
+    if (myId !== _availFetchId) return; // race après .json()
     injectDispoInCalendar(weekDays);
-    // Si la vue Disponibilité est déjà rendue, mettre à jour ses chips aussi
     if (document.getElementById('availChipsRow') && window.lastData) renderAvailChips(window.lastData);
   } catch(e) {}
 }
@@ -3249,6 +3250,7 @@ init();
 // ── Disponibilité des closers ────────────────────────────────────────────────
 let _selectedAvailCloser = null;
 let _availData           = null;
+let _availFetchId        = 0;   // compteur de version pour annuler les fetches obsolètes
 
 async function loadAvailability() {
   // Utilise la même semaine que le calendrier principal
@@ -3264,15 +3266,15 @@ async function loadAvailability() {
   // Chips closers
   renderAvailChips(data);
 
-  // Fetch availability data en arrière-plan
+  // Fetch availability data (prend la priorité sur le fetch background du calendrier)
   const startDate = data.week_days?.[0] || '';
   if (startDate) {
+    const myId = ++_availFetchId;
     try {
       const r = await fetch(`/api/closer_availability?start_date=${startDate}`);
-      if (r.ok) {
+      if (r.ok && myId === _availFetchId) {
         _availData = await r.json();
-        // Si un closer est déjà sélectionné, ajouter les backgrounds
-        if (_selectedAvailCloser) addAvailBackgrounds(_selectedAvailCloser);
+        if (myId === _availFetchId && _selectedAvailCloser) addAvailBackgrounds(_selectedAvailCloser);
       }
     } catch(e) {}
   }
