@@ -1065,9 +1065,12 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
     h.innerHTML = `
       <div class="day-abbr">${d.day}</div>
       <span class="day-num">${d.date}</span>
-      ${cnt > 0
-        ? `<div class="day-mini-stats"><span class="day-mini-stat rdv gcal-day-count" data-di="${i}">${cnt} RDV</span></div>`
-        : `<span class="gcal-day-count empty" style="margin-top:4px">–</span>`}
+      <div class="day-mini-stats">
+        ${cnt > 0
+          ? `<span class="day-mini-stat rdv gcal-day-count" data-di="${i}">${cnt} RDV</span>`
+          : `<span class="gcal-day-count empty">–</span>`}
+        <div class="day-dispo" data-di="${i}" style="font-size:9px;color:#34d399;font-weight:600;line-height:1.3;min-height:13px"></div>
+      </div>
     `;
     // Tooltip hover sur le compteur du jour
     if (cnt > 0) {
@@ -1226,7 +1229,7 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
         const name  = getDisplayName(c);
         const pct   = Math.round((n / maxCount) * 100);
         const active = n > 0;
-        return `<div style="
+        return `<div data-closer="${c}" style="
           display:flex;align-items:center;gap:8px;
           background:${active ? '#fff' : '#f8fafc'};
           border:1px solid ${active ? '#e2e8f0' : '#f1f5f9'};
@@ -1242,7 +1245,10 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
               <div style="height:100%;width:${pct}%;background:${color};border-radius:2px;transition:width .4s ease"></div>
             </div>
           </div>
-          <div style="font-size:18px;font-weight:700;color:${active ? color : '#cbd5e1'};line-height:1;flex-shrink:0">${n}</div>
+          <div style="text-align:center;flex-shrink:0">
+            <div style="font-size:18px;font-weight:700;color:${active ? color : '#cbd5e1'};line-height:1">${n}</div>
+            <div class="chip-dispo" style="font-size:9px;color:#34d399;margin-top:2px;font-weight:600;white-space:nowrap"></div>
+          </div>
         </div>`;
       }).join('');
     }
@@ -1472,6 +1478,7 @@ async function init() {
 
 async function loadWeek(offset) {
   eventsCache = null; // purge les events de la semaine précédente
+  _availData  = null; // purge la dispo de la semaine précédente
   setLoading(true);
   document.getElementById('weekLabel').textContent = 'Chargement…';
   try {
@@ -1479,11 +1486,52 @@ async function loadWeek(offset) {
     renderGrid(data);
     setSyncTime();
     loadEventsForFilter(); // fire & forget — peuple le dropdown
+    // Charge les dispos en arrière-plan pour les chips + headers
+    const startDate = data.week_days?.[0] || '';
+    if (startDate) fetchAndInjectCalendarDispo(startDate, data.week_days || []);
   } catch(e) {
     showError(e.message);
   } finally {
     setLoading(false);
   }
+}
+
+// ── Dispo injection dans le calendrier principal ───────────────────────────
+async function fetchAndInjectCalendarDispo(startDate, weekDays) {
+  try {
+    const r = await fetch(`/api/closer_availability?start_date=${startDate}`);
+    if (!r.ok) return;
+    _availData = await r.json();
+    injectDispoInCalendar(weekDays);
+    // Si la vue Disponibilité est déjà rendue, mettre à jour ses chips aussi
+    if (document.getElementById('availChipsRow') && window.lastData) renderAvailChips(window.lastData);
+  } catch(e) {}
+}
+
+function injectDispoInCalendar(weekDays) {
+  if (!_availData) return;
+  const users = _availData.users || {};
+
+  // Chips closers (closerRankRow) — dispo totale semaine
+  document.querySelectorAll('[data-closer] .chip-dispo').forEach(el => {
+    const name = el.closest('[data-closer]')?.dataset.closer;
+    const dispo = users[name]?.dispo_count ?? 0;
+    el.textContent = dispo > 0 ? `${dispo} dispo` : '';
+  });
+
+  // Headers jours — somme des paires consécutives available par jour
+  document.querySelectorAll('.day-dispo[data-di]').forEach(el => {
+    const di = parseInt(el.dataset.di);
+    if (isNaN(di)) return;
+    let total = 0;
+    Object.values(users).forEach(ud => {
+      const slots = ud.days?.[di]?.slots || [];
+      for (let i = 0; i < slots.length - 1; i++) {
+        if (slots[i] === 'available' && slots[i+1] === 'available') total++;
+      }
+    });
+    el.textContent = total > 0 ? `${total} dispo` : '';
+  });
 }
 
 // ── Slot popup ─────────────────────────────────────────────────────────────
