@@ -1074,9 +1074,6 @@ def build_availability_week_v2(start_day: datetime, bookings_by_member: dict) ->
                     slot_s >= time_to_min(fh, fm) and slot_e <= time_to_min(th, tm)
                     for fh, fm, th, tm in intervals
                 )
-                sdt = day_paris.replace(hour=sh, minute=sm)
-                edt = day_paris.replace(hour=eh, minute=em)
-
                 # 1. Booking Supabase → "booked" même hors plage Calendly
                 matched = None
                 for ev in ev_today:
@@ -1090,6 +1087,12 @@ def build_availability_week_v2(start_day: datetime, bookings_by_member: dict) ->
                 if not in_working and not matched:
                     slots.append("unavailable")
                     continue
+
+                # sdt/edt uniquement pour les slots actifs (eh peut valoir 24 pour 23:30+30)
+                safe_eh = eh if eh < 24 else 23
+                safe_em = em if eh < 24 else 59
+                sdt = day_paris.replace(hour=sh,      minute=sm)
+                edt = day_paris.replace(hour=safe_eh, minute=safe_em)
 
                 if matched:
                     is_start = (time_to_min(int(matched["start"][:2]), int(matched["start"][3:])) == slot_s)
