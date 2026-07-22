@@ -898,7 +898,8 @@ async function setEventTypeFilter(val) {
 
 // ── Google Calendar renderer ───────────────────────────────────────────────
 const GCAL_SLOT_H  = 36;
-const GCAL_START_H = 8;
+const GCAL_START_H  = 8;
+const AVAIL_START_H = 7; // heure de début du calendrier disponibilité (Paris)
 const CLOSER_COLORS = [
   '#ef4444','#f97316','#eab308','#22c55e',
   '#06b6d4','#3b82f6','#8b5cf6','#ec4899',
@@ -1531,6 +1532,25 @@ function injectDispoInCalendar(weekDays) {
       }
     });
     el.textContent = total > 0 ? `${total} dispo` : '';
+  });
+}
+
+function injectDayDispoForCloser(closerName) {
+  if (!_availData) return;
+  const ud = _availData.users?.[closerName];
+  if (!ud) return;
+  // Cible uniquement les headers dans le conteneur dispo (pas le calendrier principal)
+  const container = document.getElementById('availCalContainer');
+  if (!container) return;
+  container.querySelectorAll('.day-dispo[data-di]').forEach(el => {
+    const di = parseInt(el.dataset.di);
+    if (isNaN(di)) return;
+    const slots = ud.days?.[di]?.slots || [];
+    let count = 0;
+    for (let i = 0; i < slots.length - 1; i++) {
+      if (slots[i] === 'available' && slots[i+1] === 'available') count++;
+    }
+    el.textContent = count > 0 ? `${count} dispo` : '';
   });
 }
 
@@ -3334,12 +3354,19 @@ function selectAvailCloser(name) {
   // Mode 24h : on passe [] comme effectiveOrder pour que renderGeneralGCal
   // ne dessine QUE la structure (grille + axe horaire), sans event blocks.
   // addAvailBackgrounds s'occupe de tout le contenu visuel (vert/rouge/orange).
-  const renderData   = _availData ? { ...data, slot_labels: _availData.slot_labels } : data;
-  const renderStartH = _availData ? 0 : GCAL_START_H;
+  const startMin = AVAIL_START_H * 60;
+  const availSlots = _availData
+    ? _availData.slot_labels.filter(l => strToMin(l) >= startMin)
+    : null;
+  const renderData   = _availData ? { ...data, slot_labels: availSlots } : data;
+  const renderStartH = _availData ? AVAIL_START_H : GCAL_START_H;
   renderGeneralGCal(renderData, gridEl, [], weekDays, dayLabels, todayIdx, renderStartH);
 
   // Overlay disponibilité si déjà chargée
   if (_availData) addAvailBackgrounds(name);
+
+  // Dispos par jour dans les headers
+  if (_availData) injectDayDispoForCloser(name);
 }
 
 function addAvailBackgrounds(closerName) {
@@ -3355,7 +3382,10 @@ function addAvailBackgrounds(closerName) {
     bg.className = 'avail-bg';
     bg.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:0';
 
+    const displayOffset = AVAIL_START_H * 2; // nb de slots à ignorer avant 07:00
     slots.forEach((st, si) => {
+      const dsi = si - displayOffset; // position relative au début d'affichage
+      if (dsi < 0) return;            // slot avant 07:00 → hors grille
       if (typeof st === 'string') {
         const fill = st === 'unavailable' ? 'rgba(51,65,85,0.14)'
                    : st === 'blocked'     ? 'rgba(239,68,68,0.22)'
@@ -3363,7 +3393,7 @@ function addAvailBackgrounds(closerName) {
                    : null;
         if (!fill) return;
         const strip = document.createElement('div');
-        strip.style.cssText = `position:absolute;left:0;right:0;top:${si * GCAL_SLOT_H}px;height:${GCAL_SLOT_H}px;background:${fill}`;
+        strip.style.cssText = `position:absolute;left:0;right:0;top:${dsi * GCAL_SLOT_H}px;height:${GCAL_SLOT_H}px;background:${fill}`;
         bg.appendChild(strip);
       } else if (st && st.type === 'booked' && st.is_start) {
         // Carte verte : hauteur proportionnelle à la durée du RDV
@@ -3373,7 +3403,7 @@ function addAvailBackgrounds(closerName) {
         card.style.cssText = [
           'position:absolute',
           'left:2px','right:2px',
-          `top:${si * GCAL_SLOT_H + 1}px`,
+          `top:${dsi * GCAL_SLOT_H + 1}px`,
           `height:${cardH}px`,
           'background:#16a34a',
           'border-radius:4px',
