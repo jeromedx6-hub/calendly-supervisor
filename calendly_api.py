@@ -104,7 +104,7 @@ def get_members():
 
 # ── Schedules ─────────────────────────────────────────────────────────────────
 _PARIS_TZ = ZoneInfo("Europe/Paris")
-_REF_MONDAY = datetime(2026, 7, 21)  # lundi de référence pour la conversion
+_REF_MONDAY = datetime(2026, 7, 20)  # lundi de référence pour la conversion (LUN 20 jul 2026)
 
 def _to_paris_intervals(intervals_by_wday, source_tz_str):
     """Convertit les intervalles de travail du fuseau Calendly vers Europe/Paris."""
