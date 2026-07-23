@@ -1547,29 +1547,41 @@ async function fetchAndInjectCalendarDispo(startDate, weekDays) {
   } catch(e) {}
 }
 
+function countDispoSlots(slots) {
+  let count = 0; let i = 0;
+  while (i <= slots.length - 2) {
+    if (slots[i] === 'available' && slots[i+1] === 'available') { count++; i += 2; }
+    else i++;
+  }
+  return count;
+}
+
 function injectDispoInCalendar(weekDays) {
   if (!_availData) return;
   const users = _availData.users || {};
 
-  // Chips closers (closerRankRow) — dispo totale semaine
+  // Trouver l'index du jour d'aujourd'hui dans la semaine affichée
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayDi  = weekDays.indexOf(todayStr);
+  // Si aujourd'hui n'est pas dans la semaine affichée, pas de dispo dans les chips
+  const chipDi = todayDi >= 0 ? todayDi : -1;
+
+  // Chips closers — dispo d'AUJOURD'HUI pour ce closer (cohérent avec le header du jour)
   document.querySelectorAll('[data-closer] .chip-dispo').forEach(el => {
     const name = el.closest('[data-closer]')?.dataset.closer;
-    const dispo = users[name]?.dispo_count ?? 0;
+    if (!name || chipDi < 0) { el.textContent = ''; return; }
+    const slots = users[name]?.days?.[chipDi]?.slots || [];
+    const dispo = countDispoSlots(slots);
     el.textContent = dispo > 0 ? `${dispo} dispo` : '';
   });
 
-  // Headers jours — somme des paires consécutives available par jour
+  // Headers jours — somme de tous les closers pour ce jour
   document.querySelectorAll('.day-dispo[data-di]').forEach(el => {
     const di = parseInt(el.dataset.di);
     if (isNaN(di)) return;
     let total = 0;
     Object.values(users).forEach(ud => {
-      const slots = ud.days?.[di]?.slots || [];
-      let i = 0;
-      while (i <= slots.length - 2) {
-        if (slots[i] === 'available' && slots[i+1] === 'available') { total++; i += 2; }
-        else i++;
-      }
+      total += countDispoSlots(ud.days?.[di]?.slots || []);
     });
     el.textContent = total > 0 ? `${total} dispo` : '';
   });
