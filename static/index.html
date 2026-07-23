@@ -1591,14 +1591,12 @@ function injectDispoInCalendar(weekDays) {
     el.textContent = dispo > 0 ? `${dispo} dispo` : '';
   });
 
-  // Headers jours — somme des closers ACTIFS uniquement (= même population que les chips)
-  const activeSet = window._activeClosers; // set des noms actifs, ou null si pas encore dispo
+  // Headers jours — somme de TOUS les closers Calendly (capacité totale disponible)
   document.querySelectorAll('.day-dispo[data-di]').forEach(el => {
     const di = parseInt(el.dataset.di);
     if (isNaN(di)) return;
     let total = 0;
-    Object.entries(users).forEach(([name, ud]) => {
-      if (activeSet && !activeSet.has(name)) return;
+    Object.values(users).forEach(ud => {
       total += countDispoSlots(ud.days?.[di]?.slots || []);
     });
     el.textContent = total > 0 ? `${total} dispo` : '';
