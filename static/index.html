@@ -1264,6 +1264,8 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
       const sorted = [...effectiveOrder]
         .filter(c => (counts[c] || 0) > 0)
         .sort((a,b) => (counts[b]||0) - (counts[a]||0));
+      // Stocker globalement pour que injectDispoInCalendar filtre sur les mêmes closers
+      window._activeClosers = new Set(sorted);
       rankRow.style.display = 'flex';
       rankRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;padding:0 0 14px 0;align-items:center';
       rankRow.innerHTML = sorted.map((c, rank) => {
@@ -1577,12 +1579,14 @@ function injectDispoInCalendar(weekDays) {
     el.textContent = dispo > 0 ? `${dispo} dispo` : '';
   });
 
-  // Headers jours — somme de tous les closers pour ce jour
+  // Headers jours — somme des closers ACTIFS uniquement (= même population que les chips)
+  const activeSet = window._activeClosers; // set des noms actifs, ou null si pas encore dispo
   document.querySelectorAll('.day-dispo[data-di]').forEach(el => {
     const di = parseInt(el.dataset.di);
     if (isNaN(di)) return;
     let total = 0;
-    Object.values(users).forEach(ud => {
+    Object.entries(users).forEach(([name, ud]) => {
+      if (activeSet && !activeSet.has(name)) return;
       total += countDispoSlots(ud.days?.[di]?.slots || []);
     });
     el.textContent = total > 0 ? `${total} dispo` : '';
