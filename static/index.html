@@ -1590,12 +1590,14 @@ function injectDispoInCalendar(weekDays) {
     el.textContent = dispo > 0 ? `${dispo} dispo` : '';
   });
 
-  // Headers jours — somme de TOUS les closers Calendly (capacité totale disponible)
+  // Headers jours — somme des closers ACTIFS uniquement
+  const activeSet = window._activeClosers || null;
   document.querySelectorAll('.day-dispo[data-di]').forEach(el => {
     const di = parseInt(el.dataset.di);
     if (isNaN(di)) return;
     let total = 0;
-    Object.values(users).forEach(ud => {
+    Object.entries(users).forEach(([name, ud]) => {
+      if (activeSet && !activeSet.has(name)) return;
       total += countDispoSlots(ud.days?.[di]?.slots || []);
     });
     el.textContent = total > 0 ? `${total} dispo` : '';
