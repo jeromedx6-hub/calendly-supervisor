@@ -238,18 +238,17 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
     members     = all_members  # Tous les membres, actifs ou non (l'activité gère seulement le dot couleur en UI)
     user_grids  = {}
 
-    for member in members:
+    def _process_member(member):
         user_uri = member["uri"]
+        name     = member["name"]
         try:
             sched = get_schedule(user_uri)
             busy  = get_busy(user_uri, start_utc, end_utc)
             wh    = sched["working_hours"]
             do    = sched["date_overrides"]
         except Exception as ex:
-            print(f"[Calendar] skip {member['name']}: {ex}")
-            # Membre sans horaires : tous les slots gris (pas de dispo)
-            user_grids[member["name"]] = [["grey"] * len(SLOT_TIMES) for _ in week_days]
-            continue
+            print(f"[Calendar] skip {name}: {ex}")
+            return name, [["grey"] * len(SLOT_TIMES) for _ in week_days]
 
         user_grid = []
         for day_paris in week_days:
@@ -271,16 +270,17 @@ def _build_period_data(start_day: datetime, label: str, cache_key: str) -> dict:
                     continue
                 sdt = day_paris.replace(hour=sh, minute=sm)
                 edt = day_paris.replace(hour=eh, minute=em)
-                # Rouge uniquement si l'événement DÉMARRE dans ce slot (≠ continuation)
-                # → 1 case rouge = 1 RDV, quelle que soit la durée
                 is_booked  = any(bt == "calendly" and sdt <= bs < edt for bs, be, bt in busy)
                 is_blocked = any(bt == "external"  and overlaps(sdt, edt, bs, be) for bs, be, bt in busy)
                 if is_booked:    day_slots.append("red")
                 elif is_blocked: day_slots.append("grey")
                 else:            day_slots.append("green")
             user_grid.append(day_slots)
+        return name, user_grid
 
-        user_grids[member["name"]] = user_grid
+    with ThreadPoolExecutor(max_workers=min(len(members), 10)) as pool:
+        for name, grid in pool.map(_process_member, members):
+            user_grids[name] = grid
 
     user_order = [m["name"] for m in members]
 
