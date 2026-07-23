@@ -1886,7 +1886,13 @@ function switchTab(tab) {
   document.querySelector('.week-nav').style.pointerEvents = next7Mode ? 'none' : '';
   updateLegendAndTitle();
   const data = next7Mode ? next7Cache : weekCache[weekOffset];
-  if (data) renderGrid(data);
+  if (data) {
+    renderGrid(data);
+    if (!_availData) {
+      const startDate = data.week_days?.[0] || '';
+      if (startDate) fetchAndInjectCalendarDispo(startDate, data.week_days || []);
+    }
+  }
 }
 
 function switchView(val) {
@@ -1894,7 +1900,13 @@ function switchView(val) {
   document.getElementById('closerStats').textContent = '';
   updateLegendAndTitle();
   const data = next7Mode ? next7Cache : weekCache[weekOffset];
-  if (data) renderGrid(data);
+  if (data) {
+    renderGrid(data);
+    if (!_availData) {
+      const startDate = data.week_days?.[0] || '';
+      if (startDate) fetchAndInjectCalendarDispo(startDate, data.week_days || []);
+    }
+  }
 }
 
 function prevWeek() { if (!loading && !next7Mode) { weekOffset--; loadWeek(weekOffset); } }
