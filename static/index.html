@@ -386,6 +386,46 @@
   .stats-kpi .kpi-value.blue   { color:#3b82f6; }
   .stats-kpi .kpi-value.green  { color:#16a34a; }
   .stats-kpi .kpi-value.orange { color:#ea580c; }
+  .stats-kpi.clickable { cursor:pointer; transition:box-shadow .15s,border-color .15s; }
+  .stats-kpi.clickable:hover { box-shadow:0 4px 14px rgba(59,130,246,.18); border-color:#93c5fd; }
+
+  /* ── KPI Detail Modal ── */
+  #kpiDetailModal {
+    display:none; position:fixed; inset:0; z-index:9000;
+    background:rgba(15,23,42,.55); backdrop-filter:blur(3px);
+    align-items:center; justify-content:center;
+  }
+  #kpiDetailModal.open { display:flex; }
+  .kpi-modal-box {
+    background:#fff; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.25);
+    width:min(520px,95vw); max-height:80vh; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .kpi-modal-header {
+    padding:16px 20px; border-bottom:1px solid #e2e8f0;
+    display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
+  }
+  .kpi-modal-header h3 { font-size:15px; font-weight:700; color:#0f172a; margin:0; }
+  .kpi-modal-header .kpi-modal-sub { font-size:11px; color:#64748b; margin-top:2px; }
+  .kpi-modal-close {
+    width:28px; height:28px; border-radius:50%; border:none; background:#f1f5f9;
+    color:#64748b; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  .kpi-modal-close:hover { background:#e2e8f0; color:#0f172a; }
+  .kpi-modal-body { overflow-y:auto; padding:12px 20px 20px; }
+  .kpi-detail-table { width:100%; border-collapse:collapse; }
+  .kpi-detail-table th {
+    text-align:left; font-size:10px; font-weight:700; color:#94a3b8;
+    text-transform:uppercase; letter-spacing:.06em; padding:6px 8px;
+    border-bottom:2px solid #e2e8f0; position:sticky; top:0; background:#fff;
+  }
+  .kpi-detail-table th.right { text-align:right; }
+  .kpi-detail-table td { padding:8px 8px; border-bottom:1px solid #f1f5f9; font-size:13px; vertical-align:middle; }
+  .kpi-detail-table td.right { text-align:right; font-weight:600; }
+  .kpi-detail-table tr:last-child td { border-bottom:none; }
+  .kpi-detail-table tr:hover td { background:#f8fafc; }
+  .kpi-detail-rank { font-size:11px; color:#94a3b8; font-weight:500; width:24px; }
+  .kpi-detail-bar-wrap { flex:1; background:#f1f5f9; border-radius:4px; height:6px; overflow:hidden; }
+  .kpi-detail-bar { height:100%; border-radius:4px; transition:width .3s; }
   .stats-chart-card {
     background:#fff; border-radius:12px; padding:18px 20px;
     border:1px solid #e2e8f0; box-shadow:0 1px 4px rgba(0,0,0,.05);
@@ -2000,19 +2040,30 @@ function renderStatsKPIs(allData, periodData, gran) {
   const weekKey   = statsPeriodKey(todayStr, 'week');
   const monthKey  = todayStr.slice(0,7);
   const weekBooks  = allData.filter(b => statsPeriodKey(b.date, 'week') === weekKey);
+  const monthBooks = allData.filter(b => b.date.slice(0,7) === monthKey);
   const thisWeek   = weekBooks.length;
-  const thisMonth  = allData.filter(b => b.date.slice(0,7) === monthKey).length;
+  const thisMonth  = monthBooks.length;
   const activeClosersThisWeek = new Set(weekBooks.map(b => b.member_name).filter(Boolean)).size;
   const avgRdvPerCloser = activeClosersThisWeek > 0 ? (thisWeek / activeClosersThisWeek).toFixed(1) : '—';
 
-  row.innerHTML = `
-    <div class="stats-kpi"><div class="kpi-label">Total RDV</div><div class="kpi-value blue">${total}</div><div class="kpi-sub">période sélectionnée</div></div>
-    <div class="stats-kpi"><div class="kpi-label">Ce mois</div><div class="kpi-value">${thisMonth}</div><div class="kpi-sub">mois en cours</div></div>
-    <div class="stats-kpi"><div class="kpi-label">Cette semaine</div><div class="kpi-value">${thisWeek}</div><div class="kpi-sub">semaine en cours</div></div>
-    <div class="stats-kpi"><div class="kpi-label">Closers actifs</div><div class="kpi-value blue">${activeClosersThisWeek}</div><div class="kpi-sub">≥ 1 RDV cette semaine</div></div>
-    <div class="stats-kpi"><div class="kpi-label">Moy. RDV / closer</div><div class="kpi-value green">${avgRdvPerCloser}</div><div class="kpi-sub">cette semaine</div></div>
-    <div class="stats-kpi"><div class="kpi-label">Moy. / semaine</div><div class="kpi-value">${avgWeek}</div><div class="kpi-sub">sur la période</div></div>
-    <div class="stats-kpi"><div class="kpi-label">Top closer</div><div class="kpi-value orange" style="font-size:15px;margin-top:4px">${topCloser}</div></div>`;
+  // Capture data refs for click handlers
+  const _pd = periodData, _ad = allData, _wb = weekBooks, _mb = monthBooks;
+  const kpi = (type, label, valHtml, sub, extraStyle='') =>
+    `<div class="stats-kpi clickable" onclick="showKpiDetail('${type}',_kpiPeriod,_kpiAll,_kpiWeek,_kpiMonth)" style="${extraStyle}">
+      <div class="kpi-label">${label}</div>${valHtml}<div class="kpi-sub">${sub}</div>
+    </div>`;
+
+  // Store refs globally so onclick can access them
+  window._kpiPeriod = _pd; window._kpiAll = _ad; window._kpiWeek = _wb; window._kpiMonth = _mb;
+
+  row.innerHTML =
+    kpi('total',   'Total RDV',        `<div class="kpi-value blue">${total}</div>`,                           'période sélectionnée') +
+    kpi('month',   'Ce mois',          `<div class="kpi-value">${thisMonth}</div>`,                             'mois en cours') +
+    kpi('week',    'Cette semaine',     `<div class="kpi-value">${thisWeek}</div>`,                              'semaine en cours') +
+    kpi('active',  'Closers actifs',   `<div class="kpi-value blue">${activeClosersThisWeek}</div>`,            '≥ 1 RDV cette semaine') +
+    kpi('avg',     'Moy. RDV / closer',`<div class="kpi-value green">${avgRdvPerCloser}</div>`,                 'cette semaine') +
+    kpi('avgweek', 'Moy. / semaine',   `<div class="kpi-value">${avgWeek}</div>`,                               'sur la période') +
+    kpi('top',     'Top closer',       `<div class="kpi-value orange" style="font-size:15px;margin-top:4px">${topCloser}</div>`, '');
 }
 
 function renderStatsTimeline(bookings, gran) {
@@ -3423,6 +3474,179 @@ function addAvailBackgrounds(closerName) {
     col.prepend(bg);
   });
 }
+
+// ── KPI Detail Modal ─────────────────────────────────────────────────────────
+
+function showKpiDetail(type, periodData, allData, weekBooks, monthBooks) {
+  const modal = document.getElementById('kpiDetailModal');
+  const title = document.getElementById('kpiModalTitle');
+  const sub   = document.getElementById('kpiModalSub');
+  const body  = document.getElementById('kpiModalBody');
+
+  const byCloser = arr => {
+    const m = {};
+    arr.forEach(b => { if(b.member_name) m[b.member_name] = (m[b.member_name]||0)+1; });
+    return Object.entries(m).sort((a,b) => b[1]-a[1]);
+  };
+
+  const renderTable = (rows, headers, colsFn) => {
+    const max = Math.max(...rows.map(r => r[1]||0), 1);
+    const colors = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#ef4444','#06b6d4','#84cc16'];
+    return `<table class="kpi-detail-table">
+      <thead><tr>${headers.map((h,i)=>`<th${i>0?' class="right"':''}>${h}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map((r,idx)=>{
+        const cells = colsFn(r, idx, max, colors);
+        return `<tr>${cells}</tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  };
+
+  let html = '';
+  if (type === 'total') {
+    title.textContent = 'Total RDV — période sélectionnée';
+    sub.textContent   = `${periodData.length} RDV au total`;
+    const rows = byCloser(periodData);
+    html = renderTable(rows, ['Closer','RDV','Part'], (r, idx, max, colors) => {
+      const pct = Math.round(r[1]/periodData.length*100);
+      const color = colors[idx % colors.length];
+      return `<td class="kpi-detail-rank">${idx+1}</td>
+              <td>${getDisplayName(r[0])}</td>
+              <td class="right">${r[1]}</td>
+              <td style="width:90px;padding-left:12px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div class="kpi-detail-bar-wrap"><div class="kpi-detail-bar" style="width:${Math.round(r[1]/max*100)}%;background:${color}"></div></div>
+                  <span style="font-size:10px;color:#94a3b8;width:28px;text-align:right">${pct}%</span>
+                </div>
+              </td>`;
+    });
+  } else if (type === 'month') {
+    title.textContent = 'Ce mois — RDV par closer';
+    sub.textContent   = `${monthBooks.length} RDV ce mois`;
+    const rows = byCloser(monthBooks);
+    html = renderTable(rows, ['Closer','RDV','Part'], (r, idx, max, colors) => {
+      const pct = Math.round(r[1]/monthBooks.length*100);
+      const color = colors[idx % colors.length];
+      return `<td class="kpi-detail-rank">${idx+1}</td>
+              <td>${getDisplayName(r[0])}</td>
+              <td class="right">${r[1]}</td>
+              <td style="width:90px;padding-left:12px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div class="kpi-detail-bar-wrap"><div class="kpi-detail-bar" style="width:${Math.round(r[1]/max*100)}%;background:${color}"></div></div>
+                  <span style="font-size:10px;color:#94a3b8;width:28px;text-align:right">${pct}%</span>
+                </div>
+              </td>`;
+    });
+  } else if (type === 'week') {
+    title.textContent = 'Cette semaine — RDV par closer';
+    sub.textContent   = `${weekBooks.length} RDV cette semaine`;
+    const rows = byCloser(weekBooks);
+    html = renderTable(rows, ['Closer','RDV','Part'], (r, idx, max, colors) => {
+      const pct = weekBooks.length ? Math.round(r[1]/weekBooks.length*100) : 0;
+      const color = colors[idx % colors.length];
+      return `<td class="kpi-detail-rank">${idx+1}</td>
+              <td>${getDisplayName(r[0])}</td>
+              <td class="right">${r[1]}</td>
+              <td style="width:90px;padding-left:12px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div class="kpi-detail-bar-wrap"><div class="kpi-detail-bar" style="width:${Math.round(r[1]/max*100)}%;background:${color}"></div></div>
+                  <span style="font-size:10px;color:#94a3b8;width:28px;text-align:right">${pct}%</span>
+                </div>
+              </td>`;
+    });
+  } else if (type === 'active') {
+    title.textContent = 'Closers actifs — cette semaine';
+    sub.textContent   = 'Closers ayant posé ≥ 1 RDV';
+    const rows = byCloser(weekBooks);
+    html = renderTable(rows, ['Closer','RDV'], (r, idx) => {
+      const badge = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:6px"></span>`;
+      return `<td class="kpi-detail-rank">${idx+1}</td>
+              <td>${badge}${getDisplayName(r[0])}</td>
+              <td class="right">${r[1]}</td>`;
+    });
+  } else if (type === 'avg') {
+    title.textContent = 'Moy. RDV / closer — cette semaine';
+    const rows = byCloser(weekBooks);
+    const total = weekBooks.length;
+    const avg = rows.length ? (total/rows.length).toFixed(1) : '—';
+    sub.textContent = `${total} RDV ÷ ${rows.length} closer${rows.length>1?'s':''} = ${avg}`;
+    html = renderTable(rows, ['Closer','RDV','vs moy.'], (r, idx, max, colors) => {
+      const avgF = rows.length ? total/rows.length : 0;
+      const diff = r[1] - avgF;
+      const diffStr = diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1);
+      const diffColor = diff >= 0 ? '#16a34a' : '#ef4444';
+      return `<td class="kpi-detail-rank">${idx+1}</td>
+              <td>${getDisplayName(r[0])}</td>
+              <td class="right">${r[1]}</td>
+              <td class="right" style="color:${diffColor};font-size:12px">${diffStr}</td>`;
+    });
+  } else if (type === 'avgweek') {
+    title.textContent = 'Moy. / semaine — sur la période';
+    const weekMap = {};
+    periodData.forEach(b => {
+      const wk = statsPeriodKey(b.date, 'week');
+      weekMap[wk] = (weekMap[wk]||0)+1;
+    });
+    const weeks = Object.entries(weekMap).sort((a,b)=>a[0].localeCompare(b[0]));
+    const total = periodData.length;
+    const avgF  = weeks.length ? total/weeks.length : 0;
+    sub.textContent = `${total} RDV sur ${weeks.length} semaine${weeks.length>1?'s':''} = ${avgF.toFixed(1)}/sem.`;
+    const max = Math.max(...weeks.map(w=>w[1]),1);
+    html = `<table class="kpi-detail-table">
+      <thead><tr><th>Semaine</th><th class="right">RDV</th></tr></thead>
+      <tbody>${weeks.map(([wk,cnt])=>{
+        return `<tr>
+          <td>${wk}</td>
+          <td style="width:160px;padding-left:12px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="kpi-detail-bar-wrap"><div class="kpi-detail-bar" style="width:${Math.round(cnt/max*100)}%;background:#3b82f6"></div></div>
+              <span style="font-weight:600;min-width:24px;text-align:right">${cnt}</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } else if (type === 'top') {
+    title.textContent = 'Classement closers — période sélectionnée';
+    sub.textContent   = `${periodData.length} RDV au total`;
+    const rows = byCloser(periodData);
+    const medals = ['🥇','🥈','🥉'];
+    html = renderTable(rows, ['Closer','RDV','Part'], (r, idx, max, colors) => {
+      const pct = Math.round(r[1]/periodData.length*100);
+      const color = colors[idx % colors.length];
+      const medal = medals[idx] || `${idx+1}`;
+      return `<td style="font-size:14px;width:28px">${medal}</td>
+              <td>${getDisplayName(r[0])}</td>
+              <td class="right">${r[1]}</td>
+              <td style="width:90px;padding-left:12px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div class="kpi-detail-bar-wrap"><div class="kpi-detail-bar" style="width:${Math.round(r[1]/max*100)}%;background:${color}"></div></div>
+                  <span style="font-size:10px;color:#94a3b8;width:28px;text-align:right">${pct}%</span>
+                </div>
+              </td>`;
+    });
+  }
+
+  body.innerHTML = html || '<div style="color:#94a3b8;padding:20px;text-align:center">Aucune donnée</div>';
+  modal.classList.add('open');
+}
+
+function closeKpiModal() {
+  document.getElementById('kpiDetailModal').classList.remove('open');
+}
 </script>
+
+<!-- KPI Detail Modal -->
+<div id="kpiDetailModal" onclick="if(event.target===this)closeKpiModal()">
+  <div class="kpi-modal-box">
+    <div class="kpi-modal-header">
+      <div>
+        <h3 id="kpiModalTitle"></h3>
+        <div class="kpi-modal-sub" id="kpiModalSub"></div>
+      </div>
+      <button class="kpi-modal-close" onclick="closeKpiModal()">×</button>
+    </div>
+    <div class="kpi-modal-body" id="kpiModalBody"></div>
+  </div>
+</div>
 </body>
 </html>
