@@ -1571,11 +1571,10 @@ function injectDispoInCalendar(weekDays) {
   // Si aujourd'hui n'est pas dans la semaine affichée, pas de dispo dans les chips
   const chipDi = todayDi >= 0 ? todayDi : -1;
 
-  // Total dispo aujourd'hui pour la card RDV posés
+  // Total dispo aujourd'hui pour la card RDV posés (tous closers Calendly)
   let todayDispoTotal = 0;
   if (chipDi >= 0) {
-    Object.entries(users).forEach(([name, ud]) => {
-      if (activeSet && !activeSet.has(name)) return;
+    Object.values(users).forEach(ud => {
       todayDispoTotal += countDispoSlots(ud.days?.[chipDi]?.slots || []);
     });
   }
