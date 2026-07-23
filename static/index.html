@@ -1565,8 +1565,10 @@ function injectDispoInCalendar(weekDays) {
     let total = 0;
     Object.values(users).forEach(ud => {
       const slots = ud.days?.[di]?.slots || [];
-      for (let i = 0; i < slots.length - 1; i++) {
-        if (slots[i] === 'available' && slots[i+1] === 'available') total++;
+      let i = 0;
+      while (i <= slots.length - 2) {
+        if (slots[i] === 'available' && slots[i+1] === 'available') { total++; i += 2; }
+        else i++;
       }
     });
     el.textContent = total > 0 ? `${total} dispo` : '';
@@ -1585,8 +1587,10 @@ function injectDayDispoForCloser(closerName) {
     if (isNaN(di)) return;
     const slots = ud.days?.[di]?.slots || [];
     let count = 0;
-    for (let i = 0; i < slots.length - 1; i++) {
-      if (slots[i] === 'available' && slots[i+1] === 'available') count++;
+    let i = 0;
+    while (i <= slots.length - 2) {
+      if (slots[i] === 'available' && slots[i+1] === 'available') { count++; i += 2; }
+      else i++;
     }
     el.textContent = count > 0 ? `${count} dispo` : '';
   });
