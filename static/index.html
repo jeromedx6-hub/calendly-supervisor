@@ -1445,12 +1445,9 @@ async function loadActivity() {
     activityStatus = activity;
     applyDropdownDots();
 
-    // Refetch semaine pour exclure les inactifs côté serveur
-    weekCache = {};
-    next7Cache = null;
-    const data = await fetchWeek(weekOffset);
-    renderGrid(data);
-    loadEventsForFilter();
+    // Re-render avec les nouveaux dots d'activité (pas besoin de vider le cache)
+    const data = weekCache[weekOffset] || next7Cache;
+    if (data) { renderGrid(data); loadEventsForFilter(); }
   } catch(e) { /* silencieux */ }
 }
 
