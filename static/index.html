@@ -1574,16 +1574,16 @@ function injectDispoInCalendar(weekDays) {
   // activeSet défini en premier — utilisé partout
   const activeSet = window._activeClosers || null;
 
-  // Total dispo aujourd'hui pour la card RDV posés (closers actifs uniquement)
-  let todayDispoTotal = 0;
-  if (chipDi >= 0) {
-    Object.entries(users).forEach(([name, ud]) => {
-      if (activeSet && !activeSet.has(name)) return;
-      todayDispoTotal += countDispoSlots(ud.days?.[chipDi]?.slots || []);
+  // Total dispo semaine pour la card RDV posés (closers actifs uniquement)
+  let weekDispoTotal = 0;
+  Object.entries(users).forEach(([name, ud]) => {
+    if (activeSet && !activeSet.has(name)) return;
+    (ud.days || []).forEach(day => {
+      weekDispoTotal += countDispoSlots(day.slots || []);
     });
-  }
+  });
   const statRdvDispo = document.getElementById('statRdvDispo');
-  if (statRdvDispo) statRdvDispo.textContent = todayDispoTotal > 0 ? `${todayDispoTotal} dispo aujourd'hui` : '';
+  if (statRdvDispo) statRdvDispo.textContent = weekDispoTotal > 0 ? `${weekDispoTotal} dispo cette semaine` : '';
 
   // Chips closers — dispo d'AUJOURD'HUI pour ce closer (cohérent avec le header du jour)
   document.querySelectorAll('[data-closer] .chip-dispo').forEach(el => {
