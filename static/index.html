@@ -1238,6 +1238,7 @@ function renderGeneralGCal(data, container, effectiveOrder, weekDays, dayLabels,
       <div class="stat-card" id="statRdv" style="cursor:default">
         <div class="stat-label">RDV posés</div>
         <div class="stat-value red">${allWeekEvents.length}</div>
+        <div id="statRdvDispo" style="font-size:11px;color:#34d399;font-weight:600;margin-top:3px"></div>
       </div>
       <div class="stat-card" id="statAvgRdv" style="cursor:default">
         <div class="stat-label">Moy. RDV / closer</div>
@@ -1569,6 +1570,17 @@ function injectDispoInCalendar(weekDays) {
   const todayDi  = weekDays.indexOf(todayStr);
   // Si aujourd'hui n'est pas dans la semaine affichée, pas de dispo dans les chips
   const chipDi = todayDi >= 0 ? todayDi : -1;
+
+  // Total dispo aujourd'hui pour la card RDV posés
+  let todayDispoTotal = 0;
+  if (chipDi >= 0) {
+    Object.entries(users).forEach(([name, ud]) => {
+      if (activeSet && !activeSet.has(name)) return;
+      todayDispoTotal += countDispoSlots(ud.days?.[chipDi]?.slots || []);
+    });
+  }
+  const statRdvDispo = document.getElementById('statRdvDispo');
+  if (statRdvDispo) statRdvDispo.textContent = todayDispoTotal > 0 ? `${todayDispoTotal} dispo aujourd'hui` : '';
 
   // Chips closers — dispo d'AUJOURD'HUI pour ce closer (cohérent avec le header du jour)
   document.querySelectorAll('[data-closer] .chip-dispo').forEach(el => {
