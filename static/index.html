@@ -1571,10 +1571,14 @@ function injectDispoInCalendar(weekDays) {
   // Si aujourd'hui n'est pas dans la semaine affichée, pas de dispo dans les chips
   const chipDi = todayDi >= 0 ? todayDi : -1;
 
-  // Total dispo aujourd'hui pour la card RDV posés (tous closers Calendly)
+  // activeSet défini en premier — utilisé partout
+  const activeSet = window._activeClosers || null;
+
+  // Total dispo aujourd'hui pour la card RDV posés (closers actifs uniquement)
   let todayDispoTotal = 0;
   if (chipDi >= 0) {
-    Object.values(users).forEach(ud => {
+    Object.entries(users).forEach(([name, ud]) => {
+      if (activeSet && !activeSet.has(name)) return;
       todayDispoTotal += countDispoSlots(ud.days?.[chipDi]?.slots || []);
     });
   }
@@ -1590,8 +1594,7 @@ function injectDispoInCalendar(weekDays) {
     el.textContent = dispo > 0 ? `${dispo} dispo` : '';
   });
 
-  // Headers jours — somme des closers ACTIFS uniquement
-  const activeSet = window._activeClosers || null;
+  // Headers jours — même activeSet
   document.querySelectorAll('.day-dispo[data-di]').forEach(el => {
     const di = parseInt(el.dataset.di);
     if (isNaN(di)) return;
